@@ -47,9 +47,6 @@ class ProxyManager:
         if len(self._proxies) == 1:
             self._last_proxy = self._proxies[0]
             return self._proxies[0]
-        if len(set(self._proxies)) == 1:
-            self._last_proxy = self._proxies[0]
-            return self._proxies[0]
 
         for _ in range(len(self._proxies)):
             self._index = (self._index + 1) % len(self._proxies)
