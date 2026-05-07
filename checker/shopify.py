@@ -10,7 +10,7 @@ from aiohttp_socks import ProxyConnector
 
 from .proxy_manager import ProxyManager
 
-TITLE_TAG_LENGTH = 7
+OPENING_TITLE_TAG_LENGTH = 7
 URL_REGEX = re.compile(r"""https?://[^\s"'<>]+""", re.IGNORECASE)
 
 
@@ -45,7 +45,10 @@ def _normalize_url(url: str) -> str:
 
 async def _http_get(url: str, proxy: Optional[str], timeout: int) -> Dict[str, Any]:
     headers = {
-        "User-Agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 Safari/537.36",
+        "User-Agent": (
+            "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 "
+            "(KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+        ),
         "Accept": "*/*",
     }
 
@@ -107,9 +110,9 @@ def _extract_title(html: str) -> str:
     lower = html.lower()
     start = lower.find("<title>")
     end = lower.find("</title>")
-    if start == -1 or end == -1 or end <= start + TITLE_TAG_LENGTH:
+    if start == -1 or end == -1 or end <= start + OPENING_TITLE_TAG_LENGTH:
         return ""
-    return html[start + TITLE_TAG_LENGTH : end].strip()
+    return html[start + OPENING_TITLE_TAG_LENGTH : end].strip()
 
 
 def _html_has_cdn_shopify_hostname(html: str) -> bool:

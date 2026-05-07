@@ -341,7 +341,7 @@ async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE) -> N
 
 def main() -> None:
     if not BOT_TOKEN:
-        raise RuntimeError("BOT_TOKEN is not set. Configure BOT_TOKEN in env or config.py")
+        raise RuntimeError("BOT_TOKEN is not set. Configure BOT_TOKEN in environment variables.")
 
     init_db(ADMIN_ID)
 
