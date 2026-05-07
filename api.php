@@ -31,8 +31,9 @@ if (count($proxy_parts) !== 4) {
 
 $ip = $proxy_parts[0];
 $port = $proxy_parts[1];
-$user = $proxy_parts[2];
-$pass = $proxy_parts[3];
+// FIX: URL-encode proxy credentials to handle special characters
+$user = urlencode($proxy_parts[2]);
+$pass = urlencode($proxy_parts[3]);
 
 $agent = new userAgent();
 $ua = $agent->generate('windows');
@@ -328,7 +329,17 @@ if (curl_errno($ch)) {
 }
 
 $response2js = json_decode($response2, true);
-$cctoken = $response2js['id'];
+// FIX: Validate JSON decoding succeeded
+if (json_last_error() !== JSON_ERROR_NONE) {
+    if ($retryCount < $maxRetries) {
+        $retryCount++;
+        goto card;
+    } else {
+        echo json_encode(['Response' => 'JSON decode error: ' . json_last_error_msg(),'Price'=> $minPrice]);
+        exit;
+    }
+}
+$cctoken = $response2js['id'] ?? '';
 if (empty($cctoken)) {
     if ($retryCount < $maxRetries) {
         $retryCount++;
@@ -719,6 +730,21 @@ $gateres = strtolower($response);
         }
 $decoded->data->session->negotiate->result->sellerProposal->payment->availablePaymentLines[1]->paymentMethod->name ?? "null";
 $decoded = json_decode($response3);
+// FIX: Validate JSON decoding succeeded
+if (json_last_error() !== JSON_ERROR_NONE) {
+    if ($retryCount < $maxRetries) {
+        $retryCount++;
+        goto proposal;
+    } else {
+        echo json_encode([
+            'Response' => 'JSON decode error: ' . json_last_error_msg(),
+            'Status' => 'false',
+            'Price'=> $minPrice,
+            'Gateway' => $gateway ?? 'Unknown',
+        ]);
+        exit;
+    }
+}
 if (isset($decoded->data->session->negotiate->result->sellerProposal)) {
     $firstStrategy = $decoded->data->session->negotiate->result->sellerProposal;
     if (empty($firstStrategy)) {
@@ -1295,7 +1321,22 @@ if (strpos($response4, '"errors":[{"code":"CAPTCHA_METADATA_MISSING"')) {
     exit;
 }
 
-$response4js = json_decode($response4); 
+$response4js = json_decode($response4);
+// FIX: Validate JSON decoding succeeded
+if (json_last_error() !== JSON_ERROR_NONE) {
+    if ($retryCount < $maxRetries) {
+        $retryCount++;
+        goto recipt;
+    } else {
+        echo json_encode([
+            'Response' => 'JSON decode error: ' . json_last_error_msg(),
+            'Status' => 'false',
+            'Price'=> $totalamt,
+            'Gateway' => $gateway,
+        ]);
+        exit;
+    }
+} 
 
 if (isset($response4js->data->submitForCompletion->receipt->id)) {
     $recipt_id = $response4js->data->submitForCompletion->receipt->id;
@@ -1409,6 +1450,11 @@ if (curl_errno($ch)) {
 }
 
 $r5js = json_decode($response5);
+// FIX: Validate JSON decoding succeeded
+if (json_last_error() !== JSON_ERROR_NONE) {
+    // JSON decode failed but we can still check string response
+    logger.warning("Final response JSON decode failed, checking string response: " . json_last_error_msg());
+}
 
 if (
     strpos($response5, $checkouturl . '/thank_you') ||
