@@ -1,5 +1,6 @@
 import asyncio
 import json
+import re
 from dataclasses import dataclass, asdict
 from typing import Any, Dict, Optional
 from urllib.parse import urljoin, urlparse
@@ -8,6 +9,9 @@ import aiohttp
 from aiohttp_socks import ProxyConnector
 
 from .proxy_manager import ProxyManager
+
+TITLE_TAG_LENGTH = 7
+URL_REGEX = re.compile(r"""https?://[^\s"'<>]+""", re.IGNORECASE)
 
 
 @dataclass
@@ -101,9 +105,17 @@ def _extract_title(html: str) -> str:
     lower = html.lower()
     start = lower.find("<title>")
     end = lower.find("</title>")
-    if start == -1 or end == -1 or end <= start + 7:
+    if start == -1 or end == -1 or end <= start + TITLE_TAG_LENGTH:
         return ""
-    return html[start + 7 : end].strip()
+    return html[start + TITLE_TAG_LENGTH : end].strip()
+
+
+def _html_has_cdn_shopify_hostname(html: str) -> bool:
+    for match in URL_REGEX.findall(html):
+        hostname = urlparse(match).hostname
+        if hostname == "cdn.shopify.com":
+            return True
+    return False
 
 
 async def check_shopify_store(
@@ -163,7 +175,7 @@ async def check_shopify_store(
 
     header_keys = {key.lower() for key in home_response["headers"].keys()}
     shopify_signals = [
-        "cdn.shopify.com" in home_lower,
+        _html_has_cdn_shopify_hostname(home_html),
         "shopify.shop" in home_lower,
         "shopify-payment-button" in home_lower,
         any("x-shopify" in header for header in header_keys),
@@ -174,11 +186,12 @@ async def check_shopify_store(
     try:
         products_response = await _fetch_with_rotating_proxy(products_url, proxy_manager, timeout)
         products_data = json.loads(products_response["text"])
-        products = products_data.get("products", []) if isinstance(products_data, dict) else []
+        is_valid_products_response = isinstance(products_data, dict)
+        products = products_data.get("products", []) if is_valid_products_response else []
         result.product_count = len(products)
         if result.product_count > 0:
             result.has_products = True
-        if isinstance(products_data, dict) and "products" in products_data:
+        if is_valid_products_response and "products" in products_data:
             shopify_signals.append(True)
     except Exception:  # noqa: BLE001
         products_data = {}

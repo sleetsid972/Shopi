@@ -1,6 +1,7 @@
 import io
 import logging
 from pathlib import Path
+from time import monotonic
 from typing import List
 
 from telegram import InputFile, Update
@@ -34,7 +35,7 @@ bot_stats = {
 
 
 def _is_admin(user_id: int) -> bool:
-    return bool(ADMIN_ID) and user_id == ADMIN_ID
+    return ADMIN_ID is not None and user_id == ADMIN_ID
 
 
 async def _ensure_access(update: Update) -> bool:
@@ -231,7 +232,8 @@ async def document_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -
     try:
         telegram_file = await update.message.document.get_file()
         file_bytes = await telegram_file.download_as_bytearray()
-        urls = [line.strip() for line in file_bytes.decode("utf-8", errors="ignore").splitlines() if line.strip()]
+        decoded = file_bytes.decode("utf-8", errors="ignore")
+        urls = [line.strip() for line in decoded.splitlines() if line.strip()]
     except Exception as exc:  # noqa: BLE001
         await update.message.reply_text(f"Failed to read file: {exc}")
         return
@@ -247,6 +249,7 @@ async def document_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -
     not_shopify = 0
     results_lines = []
 
+    last_progress_update = 0.0
     for index, url in enumerate(urls, start=1):
         try:
             result = await check_shopify_store(url, proxy_manager, timeout=20)
@@ -290,7 +293,10 @@ async def document_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -
             )
         )
 
-        await progress_message.edit_text(f"Checking {index}/{len(urls)}...")
+        now = monotonic()
+        if index == len(urls) or now - last_progress_update >= 1.2:
+            await progress_message.edit_text(f"Checking {index}/{len(urls)}...")
+            last_progress_update = now
 
     bot_stats["mass_checks"] += 1
 

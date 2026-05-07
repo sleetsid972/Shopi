@@ -8,7 +8,7 @@ def _connect() -> sqlite3.Connection:
     return sqlite3.connect(DB_PATH)
 
 
-def init_db(admin_id: int) -> None:
+def init_db(admin_id: int | None) -> None:
     with _connect() as conn:
         conn.execute(
             """
@@ -19,7 +19,7 @@ def init_db(admin_id: int) -> None:
             """
         )
         conn.commit()
-    if admin_id:
+    if admin_id is not None:
         add_user(admin_id)
 
 

@@ -1,4 +1,5 @@
 import os
 
 BOT_TOKEN = os.getenv("BOT_TOKEN", "")
-ADMIN_ID = int(os.getenv("ADMIN_ID", "0") or 0)
+_admin_env = os.getenv("ADMIN_ID")
+ADMIN_ID = int(_admin_env) if _admin_env else None
