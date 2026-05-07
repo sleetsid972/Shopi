@@ -12,6 +12,7 @@ from aiohttp_socks import ProxyConnector
 from .proxy_manager import ProxyManager
 
 OPENING_TITLE_TAG_LENGTH = 7
+MAX_RETRY_ATTEMPTS = 5
 URL_REGEX = re.compile(r"""https?://[^\s"'<>]+""", re.IGNORECASE)
 
 
@@ -87,7 +88,7 @@ async def _http_get(url: str, proxy: Optional[str], timeout: int) -> Dict[str, A
 async def _fetch_with_rotating_proxy(
     url: str, proxy_manager: ProxyManager, timeout: int
 ) -> Dict[str, Any]:
-    attempts = min(max(proxy_manager.count, 1), 5)
+    attempts = min(max(proxy_manager.count, 1), MAX_RETRY_ATTEMPTS)
     last_error: Optional[Exception] = None
 
     for _ in range(attempts):

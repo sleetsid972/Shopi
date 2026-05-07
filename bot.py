@@ -26,6 +26,7 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 BASE_DIR = Path(__file__).resolve().parent
+PROGRESS_UPDATE_INTERVAL_SECONDS = 1.2
 proxy_manager = ProxyManager(BASE_DIR / "proxies.txt")
 bot_stats = {
     "single_checks": 0,
@@ -321,7 +322,7 @@ async def document_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -
         )
 
         now = monotonic()
-        if index == len(urls) or now - last_progress_update >= 1.2:
+        if index == len(urls) or now - last_progress_update >= PROGRESS_UPDATE_INTERVAL_SECONDS:
             await progress_message.edit_text(f"Checking {index}/{len(urls)}...")
             last_progress_update = now
 
