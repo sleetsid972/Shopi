@@ -6,6 +6,7 @@ from typing import Any, Dict, Optional
 from urllib.parse import urljoin, urlparse
 
 import aiohttp
+from aiohttp import ClientError
 from aiohttp_socks import ProxyConnector
 
 from .proxy_manager import ProxyManager
@@ -97,7 +98,7 @@ async def _fetch_with_rotating_proxy(
             return response
         except asyncio.CancelledError:
             raise
-        except Exception as exc:  # noqa: BLE001
+        except (ClientError, asyncio.TimeoutError, OSError, ValueError) as exc:
             last_error = exc
             continue
 
@@ -148,7 +149,7 @@ async def check_shopify_store(
         home_response = await _fetch_with_rotating_proxy(home_url, proxy_manager, timeout)
     except asyncio.CancelledError:
         raise
-    except Exception as exc:  # noqa: BLE001
+    except (ClientError, asyncio.TimeoutError, OSError, ValueError) as exc:
         result.reason = f"Request failed: {exc}"
         return result.to_dict()
 
@@ -202,7 +203,14 @@ async def check_shopify_store(
             shopify_signals.append(True)
     except asyncio.CancelledError:
         raise
-    except Exception:  # noqa: BLE001
+    except (
+        ClientError,
+        asyncio.TimeoutError,
+        OSError,
+        ValueError,
+        json.JSONDecodeError,
+    ) as exc:
+        result.reason = f"Products check failed: {exc}"
         products_data = {}
 
     try:
@@ -213,8 +221,15 @@ async def check_shopify_store(
             result.currency = str(meta_json.get("currency") or result.currency)
     except asyncio.CancelledError:
         raise
-    except Exception:  # noqa: BLE001
-        pass
+    except (
+        ClientError,
+        asyncio.TimeoutError,
+        OSError,
+        ValueError,
+        json.JSONDecodeError,
+    ) as exc:
+        if result.reason == "Store is live":
+            result.reason = f"Meta check failed: {exc}"
 
     if result.store_name == "Unknown" and title:
         result.store_name = title

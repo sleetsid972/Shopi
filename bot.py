@@ -5,7 +5,9 @@ from pathlib import Path
 from time import monotonic
 from typing import List
 
+from aiohttp import ClientError
 from telegram import InputFile, Update
+from telegram.error import TelegramError
 from telegram.ext import (
     Application,
     CommandHandler,
@@ -108,7 +110,7 @@ async def check_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
         result = await check_shopify_store(url, proxy_manager, timeout=20)
     except asyncio.CancelledError:
         raise
-    except Exception as exc:  # noqa: BLE001
+    except (ClientError, RuntimeError, ValueError, OSError, asyncio.TimeoutError) as exc:
         await status_message.edit_text(f"Check failed: {exc}")
         return
 
@@ -251,7 +253,7 @@ async def document_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -
         urls = [line.strip() for line in decoded.splitlines() if line.strip()]
     except asyncio.CancelledError:
         raise
-    except Exception as exc:  # noqa: BLE001
+    except (TelegramError, UnicodeDecodeError, OSError, ValueError) as exc:
         await update.message.reply_text(f"Failed to read file: {exc}")
         return
 
@@ -272,7 +274,13 @@ async def document_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -
             result = await check_shopify_store(url, proxy_manager, timeout=20)
         except asyncio.CancelledError:
             raise
-        except Exception as exc:  # noqa: BLE001
+        except (
+            ClientError,
+            RuntimeError,
+            ValueError,
+            OSError,
+            asyncio.TimeoutError,
+        ) as exc:
             result = {
                 "normalized_url": url,
                 "status": "Dead",
