@@ -261,7 +261,8 @@ class CardCheckerBot:
         self.working_sites: List[str] = []
         self.dead_sites: Set[str] = set()
         self._captcha_blocked_sites: Dict[str, float] = {}  # site -> unblock_time (epoch)
-        self.site_index: int = 0
+        # FIX: Per-user site index for proper rotation across users
+        self.site_index: Dict[int, int] = {}  # user_id -> index
         self._sites_ready: bool = False
 
         self.user_proxies: Dict[int, List[str]] = {}
@@ -280,9 +281,10 @@ class CardCheckerBot:
         self._last_user_msg_time = 0
         self._user_msg_lock = asyncio.Lock()
 
-        # FIX: locks for thread-safe proxy and site rotation
+        # FIX: locks for thread-safe proxy and site rotation (per-user)
         self._proxy_locks: Dict[int, asyncio.Lock] = {}
-        self._site_lock = asyncio.Lock()
+        self._site_locks: Dict[int, asyncio.Lock] = {}  # Per-user site locks
+        self._site_list_lock = asyncio.Lock()  # Global lock for modifying site lists
 
         # Adaptive throttle for error-aware backoff during mass checks
         self.throttle = AdaptiveThrottle(base_delay=DELAY_BETWEEN_CHECKS)
@@ -891,33 +893,45 @@ class CardCheckerBot:
             await asyncio.sleep(SITE_CHECK_INTERVAL_HOURS * 3600)
             await self.refresh_site_health()
 
-    # ═══════════════ Thread-safe Site Rotation ═══════════════
-    async def get_next_site_async(self) -> Optional[str]:
-        """Always use working_sites first, fallback to owner_sites. Thread-safe."""
-        async with self._site_lock:
+    # ═══════════════ Thread-safe Site Rotation (Per-User) ═══════════════
+    async def get_next_site_async(self, user_id: int = 0) -> Optional[str]:
+        """Always use working_sites first, fallback to owner_sites. Thread-safe per-user rotation."""
+        # Initialize per-user lock if needed
+        if user_id not in self._site_locks:
+            self._site_locks[user_id] = asyncio.Lock()
+        if user_id not in self.site_index:
+            self.site_index[user_id] = 0
+
+        async with self._site_locks[user_id]:
             sites = self._active_sites_snapshot()
             if not sites:
                 return None
-            site = sites[self.site_index % len(sites)]
-            self.site_index = (self.site_index + 1) % len(sites)
+            site = sites[self.site_index[user_id] % len(sites)]
+            self.site_index[user_id] = (self.site_index[user_id] + 1) % len(sites)
             return site
 
     # Keep sync version for backwards compat (non-critical paths)
-    def get_next_site(self) -> Optional[str]:
+    def get_next_site(self, user_id: int = 0) -> Optional[str]:
+        """Synchronous site rotation per user (for non-async contexts)"""
+        if user_id not in self.site_index:
+            self.site_index[user_id] = 0
+
         sites = self.working_sites if self.working_sites else self.owner_sites
         if not sites:
             return None
-        site = sites[self.site_index % len(sites)]
-        self.site_index = (self.site_index + 1) % len(sites)
+        site = sites[self.site_index[user_id] % len(sites)]
+        self.site_index[user_id] = (self.site_index[user_id] + 1) % len(sites)
         return site
 
     async def mark_site_dead(self, site: str, reason: str = "", captcha: bool = False):
         """Mark a site as dead. If captcha=True, block temporarily (CAPTCHA_BLOCK_MINUTES) instead of permanently."""
-        async with self._site_lock:
+        async with self._site_list_lock:
             if site in self.working_sites:
                 self.working_sites = [s for s in self.working_sites if s != site]
-                if self.site_index >= len(self.working_sites):
-                    self.site_index = 0
+                # Reset all user indices if site list changed
+                for user_id in self.site_index:
+                    if self.site_index[user_id] >= len(self.working_sites) and self.working_sites:
+                        self.site_index[user_id] = 0
             if captcha:
                 # Temporary block — site recovers after cooldown
                 self._captcha_blocked_sites[site] = time.time() + (CAPTCHA_BLOCK_MINUTES * 60)
@@ -933,7 +947,7 @@ class CardCheckerBot:
         """Re-add CAPTCHA-blocked sites whose cooldown has expired back to working_sites."""
         now = time.time()
         unblocked = []
-        async with self._site_lock:
+        async with self._site_list_lock:
             for site, unblock_time in list(self._captcha_blocked_sites.items()):
                 if now >= unblock_time:
                     del self._captcha_blocked_sites[site]
@@ -1249,7 +1263,9 @@ class CardCheckerBot:
                 data = await resp.json()
                 elapsed = time.time() - start_time
 
-                api_status = data.get("Status", False)
+                # FIX: Properly handle api_status - treat None, 0, False, "" all as falsy
+                api_status_raw = data.get("Status", False)
+                api_status = bool(api_status_raw)  # Convert to proper boolean
                 api_response = data.get("Response", "UNKNOWN")
                 api_gateway = data.get("Gateway", "UNKNOWN")
                 api_price = data.get("Price", 0.0)
@@ -1284,16 +1300,24 @@ class CardCheckerBot:
                 elif "GENERIC_ERROR" in response_upper:
                     # GENERIC_ERROR must NEVER be treated as APPROVED
                     status = ShopifyCheckStatus.DECLINED
-                elif api_status and any(kw in response_upper for kw in [
-                    "ORDER_PLACED", "PROCESSED_RECEIPT",
-                ]):
+                # FIX: Check for CHARGED even without api_status flag if response clearly indicates charge
+                elif any(kw in response_upper for kw in ["ORDER_PLACED", "PROCESSED_RECEIPT"]):
                     status = ShopifyCheckStatus.CHARGED
-                elif api_status and any(kw in response_upper for kw in [
+                # FIX: Check for APPROVED indicators even without api_status if strong signals present
+                elif any(kw in response_upper for kw in [
                     "INSUFFICIENT_FUNDS", "OTP_REQUIRED", "3DS_AUTHENTICATION",
                     "3D_SECURE", "AUTHENTICATION_REQUIRED", "ACTION_REQUIRED",
-                    "APPROVED",
                 ]):
                     status = ShopifyCheckStatus.APPROVED
+                # FIX: Check for standalone "APPROVED" only if NOT preceded by negative keywords
+                elif "APPROVED" in response_upper:
+                    # Reject if it's actually a rejection with "APPROVED" in it
+                    negative_keywords = ["NOT_APPROVED", "APPROVAL_REQUIRED", "APPROVAL_PENDING",
+                                       "PRE_APPROVED", "NOT APPROVED", "APPROVAL REQUIRED"]
+                    if not any(neg in response_upper for neg in negative_keywords):
+                        status = ShopifyCheckStatus.APPROVED
+                    else:
+                        status = ShopifyCheckStatus.DECLINED
                 elif "TIMEOUT" in response_upper or "CONNECTION" in response_upper:
                     status = ShopifyCheckStatus.ERROR
                     retryable = True
@@ -1365,7 +1389,9 @@ class CardCheckerBot:
             if fallback_sites:
                 logger.warning(f"⚠️ shopify_check_card: working_sites empty, using {len(fallback_sites)} owner_sites as fallback")
                 self.working_sites = fallback_sites
-                self.site_index = 0
+                # Reset site index for this user
+                if user_id:
+                    self.site_index[user_id] = 0
             else:
                 logger.error("❌ shopify_check_card: NO sites available (all dead)")
                 return "No sites", False, {"reason": "No working Shopify sites available (all dead)", "site": "none"}
@@ -1381,7 +1407,7 @@ class CardCheckerBot:
             if attempt_count >= max_real_attempts:
                 break
 
-            site = await self.get_next_site_async()
+            site = await self.get_next_site_async(user_id if user_id else 0)
             if not site or site in tried:
                 continue
             tried.add(site)
@@ -2416,7 +2442,8 @@ class CardCheckerBot:
             if data.startswith("shopify_") or data.startswith("mode_shopify_"):
                 shopify_protected = [
                     "shopify_menu", "mode_shopify_single", "mode_shopify_mass",
-                    "shopify_upload_proxies", "shopify_proxy_status"
+                    "shopify_upload_proxies", "shopify_proxy_status", "shopify_active_jobs",
+                    "shopify_filter_low", "shopify_filter_medium", "shopify_filter_high", "shopify_filter_all"
                 ]
                 if data in shopify_protected and not self.is_shopify_approved(uid) and uid not in ADMINS:
                     await event.answer("❌ Shopify access required.", alert=True)
