@@ -106,6 +106,8 @@ async def check_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
 
     try:
         result = await check_shopify_store(url, proxy_manager, timeout=20)
+    except asyncio.CancelledError:
+        raise
     except Exception as exc:  # noqa: BLE001
         await status_message.edit_text(f"Check failed: {exc}")
         return
@@ -247,6 +249,8 @@ async def document_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -
         file_bytes = await telegram_file.download_as_bytearray()
         decoded = file_bytes.decode("utf-8", errors="ignore")
         urls = [line.strip() for line in decoded.splitlines() if line.strip()]
+    except asyncio.CancelledError:
+        raise
     except Exception as exc:  # noqa: BLE001
         await update.message.reply_text(f"Failed to read file: {exc}")
         return
@@ -266,6 +270,8 @@ async def document_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -
     for index, url in enumerate(urls, start=1):
         try:
             result = await check_shopify_store(url, proxy_manager, timeout=20)
+        except asyncio.CancelledError:
+            raise
         except Exception as exc:  # noqa: BLE001
             result = {
                 "normalized_url": url,

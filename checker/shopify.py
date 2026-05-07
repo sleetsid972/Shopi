@@ -92,6 +92,8 @@ async def _fetch_with_rotating_proxy(
             response = await _http_get(url, proxy, timeout)
             response["proxy"] = proxy
             return response
+        except asyncio.CancelledError:
+            raise
         except Exception as exc:  # noqa: BLE001
             last_error = exc
             continue
@@ -141,6 +143,8 @@ async def check_shopify_store(
 
     try:
         home_response = await _fetch_with_rotating_proxy(home_url, proxy_manager, timeout)
+    except asyncio.CancelledError:
+        raise
     except Exception as exc:  # noqa: BLE001
         result.reason = f"Request failed: {exc}"
         return result.to_dict()
@@ -193,6 +197,8 @@ async def check_shopify_store(
             result.has_products = True
         if is_valid_products_response and "products" in products_data:
             shopify_signals.append(True)
+    except asyncio.CancelledError:
+        raise
     except Exception:  # noqa: BLE001
         products_data = {}
 
@@ -202,6 +208,8 @@ async def check_shopify_store(
         if isinstance(meta_json, dict):
             result.store_name = str(meta_json.get("name") or result.store_name)
             result.currency = str(meta_json.get("currency") or result.currency)
+    except asyncio.CancelledError:
+        raise
     except Exception:  # noqa: BLE001
         pass
 
