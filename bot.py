@@ -1,3 +1,4 @@
+import asyncio
 import io
 import logging
 from pathlib import Path
@@ -32,6 +33,17 @@ bot_stats = {
     "dead": 0,
     "not_shopify": 0,
 }
+stats_lock = asyncio.Lock()
+
+
+async def _increment_stat(key: str, amount: int = 1) -> None:
+    async with stats_lock:
+        bot_stats[key] += amount
+
+
+async def _stats_snapshot() -> dict:
+    async with stats_lock:
+        return dict(bot_stats)
 
 
 def _is_admin(user_id: int) -> bool:
@@ -98,15 +110,15 @@ async def check_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
         await status_message.edit_text(f"Check failed: {exc}")
         return
 
-    bot_stats["single_checks"] += 1
-    bot_stats["stores_checked"] += 1
+    await _increment_stat("single_checks")
+    await _increment_stat("stores_checked")
 
     if result["status"] == "Valid Store":
-        bot_stats["valid"] += 1
+        await _increment_stat("valid")
     elif result["status"] == "Not Shopify":
-        bot_stats["not_shopify"] += 1
+        await _increment_stat("not_shopify")
     else:
-        bot_stats["dead"] += 1
+        await _increment_stat("dead")
 
     await status_message.edit_text(
         "\n".join(
@@ -186,17 +198,18 @@ async def stats_command(update: Update, _: ContextTypes.DEFAULT_TYPE) -> None:
     if not await _ensure_access(update):
         return
 
+    stats = await _stats_snapshot()
     await update.message.reply_text(
         "\n".join(
             [
                 f"Authorized users: {count_users()}",
                 f"Loaded proxies: {proxy_manager.count}",
-                f"Single checks: {bot_stats['single_checks']}",
-                f"Mass checks: {bot_stats['mass_checks']}",
-                f"Stores checked: {bot_stats['stores_checked']}",
-                f"Valid stores: {bot_stats['valid']}",
-                f"Dead stores: {bot_stats['dead']}",
-                f"Not Shopify: {bot_stats['not_shopify']}",
+                f"Single checks: {stats['single_checks']}",
+                f"Mass checks: {stats['mass_checks']}",
+                f"Stores checked: {stats['stores_checked']}",
+                f"Valid stores: {stats['valid']}",
+                f"Dead stores: {stats['dead']}",
+                f"Not Shopify: {stats['not_shopify']}",
             ]
         )
     )
@@ -268,15 +281,15 @@ async def document_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -
 
         if result["status"] == "Valid Store":
             valid += 1
-            bot_stats["valid"] += 1
+            await _increment_stat("valid")
         elif result["status"] == "Not Shopify":
             not_shopify += 1
-            bot_stats["not_shopify"] += 1
+            await _increment_stat("not_shopify")
         else:
             dead += 1
-            bot_stats["dead"] += 1
+            await _increment_stat("dead")
 
-        bot_stats["stores_checked"] += 1
+        await _increment_stat("stores_checked")
 
         results_lines.append(
             " | ".join(
@@ -298,7 +311,7 @@ async def document_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -
             await progress_message.edit_text(f"Checking {index}/{len(urls)}...")
             last_progress_update = now
 
-    bot_stats["mass_checks"] += 1
+    await _increment_stat("mass_checks")
 
     summary = (
         f"Mass Check Complete\n"

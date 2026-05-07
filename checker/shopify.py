@@ -83,7 +83,7 @@ async def _http_get(url: str, proxy: Optional[str], timeout: int) -> Dict[str, A
 async def _fetch_with_rotating_proxy(
     url: str, proxy_manager: ProxyManager, timeout: int
 ) -> Dict[str, Any]:
-    attempts = max(proxy_manager.count, 1)
+    attempts = min(max(proxy_manager.count, 1), 5)
     last_error: Optional[Exception] = None
 
     for _ in range(attempts):
