@@ -266,19 +266,63 @@ func (p *Parser) ParseCheckoutPage(html string) (*CheckoutData, error) {
 		Currency: "USD",
 	}
 
-	// Extract session token (multiple patterns)
+	// Unescape HTML entities for better pattern matching
+	unescapedHTML := strings.ReplaceAll(html, "&quot;", "\"")
+	unescapedHTML = strings.ReplaceAll(unescapedHTML, "&amp;", "&")
+	unescapedHTML = strings.ReplaceAll(unescapedHTML, "&#39;", "'")
+	unescapedHTML = strings.ReplaceAll(unescapedHTML, "&#x27;", "'")
+
+	// Extract session token (multiple patterns with fallbacks)
+	// Pattern 1: Meta tag with escaped quotes
 	result.SessionToken = ExtractBetween(html, "name=\"serialized-sessionToken\" content=\"&quot;", "&quot;")
+
+	// Pattern 2: Meta tag without escaped quotes
 	if result.SessionToken == "" {
 		result.SessionToken = ExtractBetween(html, "name=\"serialized-sessionToken\" content=\"", "\"")
 	}
+
+	// Pattern 3: JSON with escaped quotes
 	if result.SessionToken == "" {
 		result.SessionToken = ExtractBetween(html, "\"serializedSessionToken\":\"", "\"")
 	}
+
+	// Pattern 4: Data attribute
 	if result.SessionToken == "" {
 		result.SessionToken = ExtractBetween(html, "data-session-token=\"", "\"")
 	}
+
+	// Pattern 5: Simple sessionToken in JSON
 	if result.SessionToken == "" {
 		result.SessionToken = ExtractBetween(html, "\"sessionToken\":\"", "\"")
+	}
+
+	// Pattern 6: Try with unescaped HTML
+	if result.SessionToken == "" {
+		result.SessionToken = ExtractBetween(unescapedHTML, "\"sessionToken\":\"", "\"")
+	}
+
+	// Pattern 7: Regex-based extraction for sessionToken in any JSON context
+	if result.SessionToken == "" {
+		re := regexp.MustCompile(`["']sessionToken["']\s*:\s*["']([A-Za-z0-9_\-]{50,})["']`)
+		if match := re.FindStringSubmatch(unescapedHTML); len(match) > 1 {
+			result.SessionToken = match[1]
+		}
+	}
+
+	// Pattern 8: Look for serializedSessionToken with regex
+	if result.SessionToken == "" {
+		re := regexp.MustCompile(`["']serializedSessionToken["']\s*:\s*["']([A-Za-z0-9_\-]{50,})["']`)
+		if match := re.FindStringSubmatch(unescapedHTML); len(match) > 1 {
+			result.SessionToken = match[1]
+		}
+	}
+
+	// Pattern 9: window.Shopify or similar globals
+	if result.SessionToken == "" {
+		re := regexp.MustCompile(`window\.Shopify[^{]*\{[^}]*sessionToken["']\s*:\s*["']([A-Za-z0-9_\-]{50,})["']`)
+		if match := re.FindStringSubmatch(unescapedHTML); len(match) > 1 {
+			result.SessionToken = match[1]
+		}
 	}
 
 	// Extract queue token
