@@ -5,6 +5,7 @@ import (
 	"crypto/tls"
 	"net"
 	"net/http"
+	"net/http/cookiejar"
 	"net/url"
 	"time"
 )
@@ -87,12 +88,19 @@ func NewClient(config *ClientConfig) (*Client, error) {
 		transport.Proxy = http.ProxyURL(proxyURL)
 	}
 
+	// Create cookie jar for maintaining cookies across requests
+	jar, err := cookiejar.New(nil)
+	if err != nil {
+		return nil, err
+	}
+
 	client := &http.Client{
 		Transport: transport,
 		Timeout:   45 * time.Second, // Overall request timeout
+		Jar:       jar,               // Cookie jar for automatic cookie handling
 		CheckRedirect: func(req *http.Request, via []*http.Request) error {
-			// Allow up to 5 redirects
-			if len(via) >= 5 {
+			// Allow up to 10 redirects (Shopify can have multiple)
+			if len(via) >= 10 {
 				return http.ErrUseLastResponse
 			}
 			return nil
