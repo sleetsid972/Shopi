@@ -237,6 +237,17 @@ func (p *PaymentProcessor) createCheckout(ctx context.Context, siteURL, variantI
 
 	html := string(body)
 
+	// Debug logging
+	p.Logger.Infof("Checkout URL: %s", resp.Request.URL.String())
+	p.Logger.Infof("Response status: %d", resp.StatusCode)
+	p.Logger.Infof("Response headers: %v", resp.Header)
+	p.Logger.Infof("HTML length: %d bytes", len(html))
+
+	// Log first 500 chars of HTML for debugging
+	if len(html) > 500 {
+		p.Logger.Debugf("HTML start: %s...", html[:500])
+	}
+
 	// Check for login requirement
 	if strings.Contains(strings.ToLower(html), "login") && strings.Contains(resp.Request.URL.Path, "account") {
 		return nil, fmt.Errorf("site requires login")
@@ -248,11 +259,15 @@ func (p *PaymentProcessor) createCheckout(ctx context.Context, siteURL, variantI
 		sessionToken = resp.Header.Get("x-checkout-one-session-token")
 	}
 
+	p.Logger.Infof("Session token from header: %s", sessionToken)
+
 	// Parse checkout page
 	checkoutData, err := p.Parser.ParseCheckoutPage(html)
 	if err != nil {
 		return nil, err
 	}
+
+	p.Logger.Infof("Session token from HTML: %s", checkoutData.SessionToken)
 
 	// Use header session token if available
 	if sessionToken != "" {
@@ -260,8 +275,16 @@ func (p *PaymentProcessor) createCheckout(ctx context.Context, siteURL, variantI
 	}
 
 	if checkoutData.SessionToken == "" {
+		// Log snippet for debugging
+		htmlSnippet := html
+		if len(html) > 1000 {
+			htmlSnippet = html[:1000]
+		}
+		p.Logger.Errorf("Failed to extract session token. HTML snippet: %s", htmlSnippet)
 		return nil, fmt.Errorf("failed to extract session token")
 	}
+
+	p.Logger.Infof("Final session token: %s", checkoutData.SessionToken)
 
 	// Extract attempt token from URL
 	attemptToken := ""
