@@ -242,7 +242,6 @@ func (b *VariablesBuilder) BuildProposalVariables(includePayment bool) map[strin
 			"deliveryLines": []map[string]interface{}{
 				{
 					"destination": map[string]interface{}{
-						"oneTimeUse": true,
 						"streetAddress": map[string]interface{}{
 							"firstName":   b.Address.FirstName,
 							"lastName":    b.Address.LastName,
@@ -255,21 +254,23 @@ func (b *VariablesBuilder) BuildProposalVariables(includePayment bool) map[strin
 							"phone":       b.Address.Phone,
 						},
 					},
-					"targetMerchandise": map[string]interface{}{
-						"lines": []map[string]interface{}{
-							{
-								"merchandiseId": "gid://shopify/ProductVariantMerchandise/" + b.MerchandiseID,
-								"quantity": map[string]interface{}{
-									"items": 1,
-								},
+					"targetMerchandiseLines": []map[string]interface{}{
+						{
+							"merchandiseId": "gid://shopify/ProductVariantMerchandise/" + b.MerchandiseID,
+							"quantity": map[string]interface{}{
+								"items": 1,
 							},
 						},
 					},
+					"selectedDeliveryStrategy":  nil,
+					"expectedTotalPrice":        nil,
+					"deliveryMethodTypes":       []string{},
 				},
 			},
+			"noDeliveryRequired": false,
 		},
 		"merchandise": map[string]interface{}{
-			"lines": []map[string]interface{}{
+			"merchandiseLines": []map[string]interface{}{
 				{
 					"merchandiseId": "gid://shopify/ProductVariantMerchandise/" + b.MerchandiseID,
 					"quantity": map[string]interface{}{
