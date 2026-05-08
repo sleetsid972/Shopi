@@ -47,7 +47,8 @@ type SubmitData struct {
 
 // CheckoutData contains parsed checkout page data
 type CheckoutData struct {
-	SessionToken   string
+	SessionToken   string // The actual session token for GraphQL sessionInput
+	AttemptToken   string // The checkout attempt token from URL
 	QueueToken     string
 	StableID       string
 	MerchandiseID  string
@@ -64,35 +65,56 @@ func (p *Parser) ParseProposalResponse(data map[string]interface{}) (*ProposalDa
 		Currency: "USD",
 	}
 
-	// Navigate to proposal data
-	proposalInterface, ok := data["proposal"]
+	// Navigate to session -> negotiate -> result
+	sessionInterface, ok := data["session"]
 	if !ok {
-		return nil, fmt.Errorf("no proposal field in response")
+		return nil, fmt.Errorf("no session field in response")
 	}
 
-	proposal, ok := proposalInterface.(map[string]interface{})
+	session, ok := sessionInterface.(map[string]interface{})
 	if !ok {
-		return nil, fmt.Errorf("invalid proposal format")
+		return nil, fmt.Errorf("invalid session format")
 	}
 
-	// Check for ProposalFailure
-	if errors, ok := proposal["proposalErrors"].([]interface{}); ok && len(errors) > 0 {
+	negotiateInterface, ok := session["negotiate"]
+	if !ok {
+		return nil, fmt.Errorf("no negotiate field in response")
+	}
+
+	negotiate, ok := negotiateInterface.(map[string]interface{})
+	if !ok {
+		return nil, fmt.Errorf("invalid negotiate format")
+	}
+
+	// Check for errors
+	if errors, ok := negotiate["errors"].([]interface{}); ok && len(errors) > 0 {
 		if firstError, ok := errors[0].(map[string]interface{}); ok {
 			code := GetString(firstError, "code")
 			message := GetString(firstError, "localizedMessage")
-			return nil, fmt.Errorf("proposal failed: %s - %s", code, message)
+			return nil, fmt.Errorf("negotiation failed: %s - %s", code, message)
 		}
-		return nil, fmt.Errorf("proposal failed with unknown error")
+		return nil, fmt.Errorf("negotiation failed with unknown error")
 	}
 
-	// Extract proposal data
-	proposalData, ok := proposal["proposal"].(map[string]interface{})
+	// Get result
+	resultInterface, ok := negotiate["result"]
 	if !ok {
-		return nil, fmt.Errorf("no proposal data found")
+		return nil, fmt.Errorf("no result field in response")
+	}
+
+	resultData, ok := resultInterface.(map[string]interface{})
+	if !ok {
+		return nil, fmt.Errorf("invalid result format")
+	}
+
+	// Get seller proposal
+	sellerProposal, ok := resultData["sellerProposal"].(map[string]interface{})
+	if !ok {
+		return nil, fmt.Errorf("no seller proposal found")
 	}
 
 	// Extract running total
-	if runningTotal, ok := proposalData["runningTotal"].(map[string]interface{}); ok {
+	if runningTotal, ok := sellerProposal["runningTotal"].(map[string]interface{}); ok {
 		if value, ok := runningTotal["value"].(map[string]interface{}); ok {
 			result.TotalAmount = GetFloat(value, "amount")
 			if currency := GetString(value, "currencyCode"); currency != "" {
@@ -102,29 +124,26 @@ func (p *Parser) ParseProposalResponse(data map[string]interface{}) (*ProposalDa
 	}
 
 	// Extract delivery information
-	if delivery, ok := proposalData["delivery"].(map[string]interface{}); ok {
+	if delivery, ok := sellerProposal["delivery"].(map[string]interface{}); ok {
 		if deliveryLines, ok := delivery["deliveryLines"].([]interface{}); ok && len(deliveryLines) > 0 {
 			if line, ok := deliveryLines[0].(map[string]interface{}); ok {
 				// Extract delivery strategies
 				if strategies, ok := line["availableDeliveryStrategies"].([]interface{}); ok && len(strategies) > 0 {
 					if strategy, ok := strategies[0].(map[string]interface{}); ok {
 						result.DeliveryStrategy = GetString(strategy, "handle")
-						if price, ok := strategy["price"].(map[string]interface{}); ok {
-							if value, ok := price["value"].(map[string]interface{}); ok {
+						if amount, ok := strategy["amount"].(map[string]interface{}); ok {
+							if value, ok := amount["value"].(map[string]interface{}); ok {
 								result.ShippingAmount = GetFloat(value, "amount")
 							}
 						}
 					}
 				}
 
-				// Extract merchandise info
+				// Extract stable ID from target merchandise
 				if target, ok := line["targetMerchandise"].(map[string]interface{}); ok {
-					id := GetString(target, "id")
-					if id != "" {
-						// Extract ID from gid://shopify/ProductVariantSnapshot/...
-						parts := strings.Split(id, "/")
-						if len(parts) > 0 {
-							result.StableID = parts[len(parts)-1]
+					if linesV2, ok := target["linesV2"].([]interface{}); ok && len(linesV2) > 0 {
+						if merchandiseLine, ok := linesV2[0].(map[string]interface{}); ok {
+							result.StableID = GetString(merchandiseLine, "stableId")
 						}
 					}
 				}
@@ -133,7 +152,7 @@ func (p *Parser) ParseProposalResponse(data map[string]interface{}) (*ProposalDa
 	}
 
 	// Extract payment information
-	if payment, ok := proposalData["payment"].(map[string]interface{}); ok {
+	if payment, ok := sellerProposal["payment"].(map[string]interface{}); ok {
 		if paymentLines, ok := payment["availablePaymentLines"].([]interface{}); ok && len(paymentLines) > 0 {
 			if line, ok := paymentLines[0].(map[string]interface{}); ok {
 				if method, ok := line["paymentMethod"].(map[string]interface{}); ok {
@@ -148,7 +167,7 @@ func (p *Parser) ParseProposalResponse(data map[string]interface{}) (*ProposalDa
 	}
 
 	// Extract tax information
-	if tax, ok := proposalData["tax"].(map[string]interface{}); ok {
+	if tax, ok := sellerProposal["tax"].(map[string]interface{}); ok {
 		if totalTax, ok := tax["totalTaxAmount"].(map[string]interface{}); ok {
 			if value, ok := totalTax["value"].(map[string]interface{}); ok {
 				result.TaxAmount = GetFloat(value, "amount")
@@ -163,8 +182,18 @@ func (p *Parser) ParseProposalResponse(data map[string]interface{}) (*ProposalDa
 func (p *Parser) ParseSubmitResponse(data map[string]interface{}) (*SubmitData, error) {
 	result := &SubmitData{}
 
-	// Navigate to submit data
-	submitInterface, ok := data["submit"]
+	// Navigate to session -> submit
+	sessionInterface, ok := data["session"]
+	if !ok {
+		return nil, fmt.Errorf("no session field in response")
+	}
+
+	session, ok := sessionInterface.(map[string]interface{})
+	if !ok {
+		return nil, fmt.Errorf("invalid session format")
+	}
+
+	submitInterface, ok := session["submit"]
 	if !ok {
 		return nil, fmt.Errorf("no submit field in response")
 	}
@@ -191,11 +220,13 @@ func (p *Parser) ParseSubmitResponse(data map[string]interface{}) (*SubmitData, 
 
 	case "SubmitPending":
 		result.Success = false
-		result.PollURL = GetString(submit, "pollUrl")
 		result.PollDelay = GetInt(submit, "pollDelay")
+		if receipt, ok := submit["receipt"].(map[string]interface{}); ok {
+			result.PollURL = GetString(receipt, "id") // Receipt ID is used for polling
+		}
 		result.Message = "Payment pending"
 
-	case "SubmitRejected", "SubmitFailed":
+	case "SubmitFailed":
 		result.Success = false
 		if errors, ok := submit["errors"].([]interface{}); ok && len(errors) > 0 {
 			if firstError, ok := errors[0].(map[string]interface{}); ok {
@@ -207,7 +238,7 @@ func (p *Parser) ParseSubmitResponse(data map[string]interface{}) (*SubmitData, 
 			}
 		}
 		if result.Message == "" {
-			result.Message = "Payment rejected"
+			result.Message = "Payment failed"
 		}
 
 	case "SubmitAlreadyAccepted":
@@ -219,6 +250,7 @@ func (p *Parser) ParseSubmitResponse(data map[string]interface{}) (*SubmitData, 
 
 	case "SubmitThrottled":
 		result.Success = false
+		result.PollDelay = GetInt(submit, "pollAfter")
 		result.Message = "Throttled - too many requests"
 
 	default:

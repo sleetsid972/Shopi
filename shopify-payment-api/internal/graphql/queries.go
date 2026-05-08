@@ -2,181 +2,194 @@ package graphql
 
 import "fmt"
 
-// QUERY_PROPOSAL_SHIPPING is the initial GraphQL query for shipping proposal
-const QUERY_PROPOSAL_SHIPPING = `
-query proposal(
-  $attemptToken: String!
-  $buyerIdentity: BuyerIdentityInput
-  $delivery: DeliveryInput
-  $localization: LocalizationInput
-  $payment: PaymentInput
-  $taxes: TaxesInput
+// Note: These GraphQL queries are based on the working Python implementation (Autoshopify_FIXED.py)
+// They use sessionInput instead of attemptToken to match Shopify's actual API
+
+// QUERY_PROPOSAL is the GraphQL query for negotiating proposal
+// This matches the Python version's QUERY_PROPOSAL_SHIPPING
+const QUERY_PROPOSAL = `
+query Proposal(
+  $sessionInput: SessionTokenInput!
+  $queueToken: String
+  $buyerIdentity: BuyerIdentityTermInput
+  $delivery: DeliveryTermsInput
+  $discounts: DiscountTermsInput
+  $payment: PaymentTermInput
+  $merchandise: MerchandiseTermInput
+  $taxes: TaxTermInput
 ) {
-  proposal(
-    attemptToken: $attemptToken
-    buyerIdentity: $buyerIdentity
-    delivery: $delivery
-    localization: $localization
-    payment: $payment
-    taxes: $taxes
-  ) {
-    ... on ProposalSuccess {
-      proposal {
-        runningTotal {
-          value {
-            amount
-            currencyCode
-          }
+  session(sessionInput: $sessionInput) {
+    negotiate(
+      input: {
+        purchaseProposal: {
+          buyerIdentity: $buyerIdentity
+          delivery: $delivery
+          discounts: $discounts
+          payment: $payment
+          merchandise: $merchandise
+          taxes: $taxes
         }
-        delivery {
-          deliveryLines {
-            targetMerchandise {
-              ... on ProductVariantSnapshot {
-                id
+        queueToken: $queueToken
+      }
+    ) {
+      __typename
+      result {
+        ... on NegotiationResultAvailable {
+          sellerProposal {
+            delivery {
+              ... on FilledDeliveryTerms {
+                deliveryLines {
+                  availableDeliveryStrategies {
+                    ... on CompleteDeliveryStrategy {
+                      handle
+                      title
+                      description
+                      methodType
+                      amount {
+                        ... on MoneyValueConstraint {
+                          value {
+                            amount
+                            currencyCode
+                          }
+                        }
+                      }
+                    }
+                  }
+                  targetMerchandise {
+                    ... on FilledMerchandiseLineTargetCollection {
+                      linesV2 {
+                        ... on MerchandiseLine {
+                          stableId
+                        }
+                      }
+                    }
+                  }
+                }
               }
             }
-            selectedDeliveryStrategy {
-              handle
+            payment {
+              ... on FilledPaymentTerms {
+                availablePaymentLines {
+                  paymentMethod {
+                    ... on PaymentProvider {
+                      paymentMethodIdentifier
+                      name
+                      extensibilityDisplayName
+                    }
+                  }
+                }
+              }
             }
-            availableDeliveryStrategies {
-              handle
-              description
-              price {
+            runningTotal {
+              ... on MoneyValueConstraint {
                 value {
                   amount
                   currencyCode
                 }
               }
-              methodType
             }
-          }
-        }
-        payment {
-          availablePaymentLines {
-            paymentMethod {
-              name
-              paymentMethodIdentifier
-              extensibilityDisplayName
-            }
-          }
-        }
-        tax {
-          ... on FilledTaxTerms {
-            totalTaxAmount {
-              value {
-                amount
-                currencyCode
+            tax {
+              ... on FilledTaxTerms {
+                totalTaxAmount {
+                  ... on MoneyValueConstraint {
+                    value {
+                      amount
+                      currencyCode
+                    }
+                  }
+                }
               }
             }
           }
         }
       }
-    }
-    ... on ProposalFailure {
-      proposalErrors {
+      errors {
         code
         localizedMessage
         nonLocalizedMessage
-        key
       }
     }
   }
 }
 `
 
-// QUERY_PROPOSAL_DELIVERY is the GraphQL query for delivery proposal
-const QUERY_PROPOSAL_DELIVERY = `
-query proposal(
-  $attemptToken: String!
-  $buyerIdentity: BuyerIdentityInput
-  $delivery: DeliveryInput
-  $localization: LocalizationInput
-  $payment: PaymentInput
-  $taxes: TaxesInput
+// MUTATION_SUBMIT is the GraphQL mutation for submitting payment
+const MUTATION_SUBMIT = `
+mutation SubmitForCompletion(
+  $sessionInput: SessionTokenInput!
+  $queueToken: String
+  $buyerIdentity: BuyerIdentityTermInput
+  $delivery: DeliveryTermsInput
+  $discounts: DiscountTermsInput
+  $payment: PaymentTermInput
+  $merchandise: MerchandiseTermInput
+  $taxes: TaxTermInput
 ) {
-  proposal(
-    attemptToken: $attemptToken
-    buyerIdentity: $buyerIdentity
-    delivery: $delivery
-    localization: $localization
-    payment: $payment
-    taxes: $taxes
-  ) {
-    ... on ProposalSuccess {
-      proposal {
-        runningTotal {
-          value {
-            amount
-            currencyCode
-          }
+  session(sessionInput: $sessionInput) {
+    submit(
+      input: {
+        purchaseProposal: {
+          buyerIdentity: $buyerIdentity
+          delivery: $delivery
+          discounts: $discounts
+          payment: $payment
+          merchandise: $merchandise
+          taxes: $taxes
+        }
+        queueToken: $queueToken
+      }
+    ) {
+      __typename
+      ... on SubmitSuccess {
+        result {
+          token
+          orderId
+          checkoutCompleteUrl
         }
       }
-    }
-    ... on ProposalFailure {
-      proposalErrors {
-        code
-        localizedMessage
-        nonLocalizedMessage
+      ... on SubmitPending {
+        pollDelay
+        receipt {
+          id
+        }
+      }
+      ... on SubmitFailed {
+        errors {
+          code
+          localizedMessage
+          nonLocalizedMessage
+        }
+      }
+      ... on SubmitAlreadyAccepted {
+        receipt {
+          token
+        }
+      }
+      ... on SubmitThrottled {
+        pollAfter
       }
     }
   }
 }
 `
 
-// MUTATION_SUBMIT_PAYMENT is the GraphQL mutation for submitting payment
-const MUTATION_SUBMIT_PAYMENT = `
-mutation submit(
-  $attemptToken: String!
-  $buyerIdentity: BuyerIdentityInput
-  $delivery: DeliveryInput
-  $localization: LocalizationInput
-  $payment: PaymentInput
-  $taxes: TaxesInput
-) {
-  submit(
-    attemptToken: $attemptToken
-    buyerIdentity: $buyerIdentity
-    delivery: $delivery
-    localization: $localization
-    payment: $payment
-    taxes: $taxes
-  ) {
-    ... on SubmitSuccess {
-      result {
-        token
-        orderId
-        checkoutCompleteUrl
-      }
-    }
-    ... on SubmitPending {
+// QUERY_POLL is the GraphQL query for polling receipt status
+const QUERY_POLL = `
+query PollForReceipt($receiptId: ID!, $sessionToken: String!) {
+  receipt(id: $receiptId, sessionToken: $sessionToken) {
+    __typename
+    ... on ProcessingReceipt {
       pollDelay
-      pollUrl
     }
-    ... on SubmitThrottled {
-      throttle {
-        currentlyAvailable
-        restoreRate
-      }
-    }
-    ... on SubmitRejected {
-      errors {
+    ... on FailedReceipt {
+      processingError {
         code
         localizedMessage
-        nonLocalizedMessage
-        key
       }
     }
-    ... on SubmitFailed {
-      errors {
-        code
-        localizedMessage
-        nonLocalizedMessage
-      }
-    }
-    ... on SubmitAlreadyAccepted {
-      receipt {
-        token
-      }
+    ... on SuccessfulReceipt {
+      token
+      orderId
     }
   }
 }
@@ -184,7 +197,8 @@ mutation submit(
 
 // VariablesBuilder helps build GraphQL variables
 type VariablesBuilder struct {
-	AttemptToken  string
+	SessionToken  string
+	QueueToken    string
 	MerchandiseID string
 	StableID      string
 	Currency      string
@@ -210,8 +224,16 @@ type AddressData struct {
 // BuildProposalVariables builds variables for proposal query
 func (b *VariablesBuilder) BuildProposalVariables(includePayment bool) map[string]interface{} {
 	variables := map[string]interface{}{
-		"attemptToken": b.AttemptToken,
+		"sessionInput": map[string]interface{}{
+			"sessionToken": b.SessionToken,
+		},
+		"queueToken": b.QueueToken,
+		"discounts": map[string]interface{}{
+			"lines":                      []interface{}{},
+			"acceptUnexpectedDiscounts": true,
+		},
 		"buyerIdentity": map[string]interface{}{
+			"email": "",
 			"shopPayOptInPhone": map[string]interface{}{
 				"number": b.Address.Phone,
 			},
@@ -219,71 +241,73 @@ func (b *VariablesBuilder) BuildProposalVariables(includePayment bool) map[strin
 		"delivery": map[string]interface{}{
 			"deliveryLines": []map[string]interface{}{
 				{
-					"targetMerchandise": map[string]interface{}{
-						"merchandiseId": "gid://shopify/ProductVariantMerchandise/" + b.MerchandiseID,
-					},
-					"destinationAddress": map[string]interface{}{
+					"destination": map[string]interface{}{
+						"oneTimeUse": true,
 						"streetAddress": map[string]interface{}{
+							"firstName":   b.Address.FirstName,
+							"lastName":    b.Address.LastName,
 							"address1":    b.Address.Address1,
 							"address2":    b.Address.Address2,
 							"city":        b.Address.City,
 							"countryCode": b.Address.CountryCode,
-							"postalCode":  b.Address.PostalCode,
-							"firstName":   b.Address.FirstName,
-							"lastName":    b.Address.LastName,
 							"zoneCode":    b.Address.State,
+							"postalCode":  b.Address.PostalCode,
 							"phone":       b.Address.Phone,
 						},
 					},
-					"expectedTotalPrice": map[string]interface{}{
-						"value": map[string]interface{}{
-							"amount":       "0",
-							"currencyCode": b.Currency,
+					"targetMerchandise": map[string]interface{}{
+						"lines": []map[string]interface{}{
+							{
+								"merchandiseId": "gid://shopify/ProductVariantMerchandise/" + b.MerchandiseID,
+								"quantity": map[string]interface{}{
+									"items": 1,
+								},
+							},
 						},
 					},
 				},
 			},
 		},
-		"localization": map[string]interface{}{
-			"country": b.Address.CountryCode,
-		},
-		"payment": map[string]interface{}{
-			"billingAddress": map[string]interface{}{
-				"streetAddress": map[string]interface{}{
-					"address1":    b.Address.Address1,
-					"address2":    b.Address.Address2,
-					"city":        b.Address.City,
-					"countryCode": b.Address.CountryCode,
-					"postalCode":  b.Address.PostalCode,
-					"firstName":   b.Address.FirstName,
-					"lastName":    b.Address.LastName,
-					"zoneCode":    b.Address.State,
-					"phone":       b.Address.Phone,
+		"merchandise": map[string]interface{}{
+			"lines": []map[string]interface{}{
+				{
+					"merchandiseId": "gid://shopify/ProductVariantMerchandise/" + b.MerchandiseID,
+					"quantity": map[string]interface{}{
+						"items": 1,
+					},
 				},
 			},
 		},
-		"taxes": map[string]interface{}{
-			"proposedTotalAmount": map[string]interface{}{
-				"value": map[string]interface{}{
-					"amount":       "0",
-					"currencyCode": b.Currency,
-				},
-			},
-		},
+		"taxes": map[string]interface{}{},
 	}
 
 	// Add payment method if included
 	if includePayment && b.PaymentID != "" {
-		variables["payment"].(map[string]interface{})["paymentLines"] = []map[string]interface{}{
-			{
-				"paymentMethod": map[string]interface{}{
+		variables["payment"] = map[string]interface{}{
+			"lines": []map[string]interface{}{
+				{
 					"paymentMethodIdentifier": b.PaymentID,
+					"amount": map[string]interface{}{
+						"shopMoney": map[string]interface{}{
+							"amount":       b.Subtotal,
+							"currencyCode": b.Currency,
+						},
+					},
+					"directPaymentMethod": map[string]interface{}{
+						"vaultToken": b.PaymentToken,
+					},
 				},
-				"directPaymentMethod": map[string]interface{}{
-					"sessionId":    b.PaymentToken,
-					"cardBrand":    "",
-					"lastFourOnly": "",
-				},
+			},
+			"billingAddress": map[string]interface{}{
+				"firstName":   b.Address.FirstName,
+				"lastName":    b.Address.LastName,
+				"address1":    b.Address.Address1,
+				"address2":    b.Address.Address2,
+				"city":        b.Address.City,
+				"countryCode": b.Address.CountryCode,
+				"zoneCode":    b.Address.State,
+				"postalCode":  b.Address.PostalCode,
+				"phone":       b.Address.Phone,
 			},
 		}
 	}
@@ -292,39 +316,23 @@ func (b *VariablesBuilder) BuildProposalVariables(includePayment bool) map[strin
 }
 
 // BuildSubmitVariables builds variables for submit mutation
-func (b *VariablesBuilder) BuildSubmitVariables(deliveryStrategy string, shippingAmount, taxAmount float64) map[string]interface{} {
+func (b *VariablesBuilder) BuildSubmitVariables(deliveryStrategy string, stableID string) map[string]interface{} {
 	variables := b.BuildProposalVariables(true)
 
-	// Update delivery strategy
+	// Update delivery strategy with the selected one
 	if deliveryLines, ok := variables["delivery"].(map[string]interface{})["deliveryLines"].([]map[string]interface{}); ok && len(deliveryLines) > 0 {
 		deliveryLines[0]["selectedDeliveryStrategy"] = map[string]interface{}{
-			"deliveryStrategyByHandle": map[string]interface{}{
-				"handle":            deliveryStrategy,
-				"customDeliveryRate": false,
-			},
-			"options": map[string]interface{}{},
+			"handle": deliveryStrategy,
 		}
-		deliveryLines[0]["targetMerchandiseLines"] = map[string]interface{}{
-			"lines": []map[string]interface{}{
-				{"stableId": b.StableID},
-			},
-		}
-		deliveryLines[0]["expectedTotalPrice"] = map[string]interface{}{
-			"value": map[string]interface{}{
-				"amount":       formatAmount(shippingAmount),
-				"currencyCode": b.Currency,
-			},
-		}
-		deliveryLines[0]["destinationChanged"] = false
-	}
-
-	// Update tax amount
-	if taxes, ok := variables["taxes"].(map[string]interface{}); ok {
-		taxes["proposedTotalAmount"] = map[string]interface{}{
-			"value": map[string]interface{}{
-				"amount":       formatAmount(taxAmount),
-				"currencyCode": b.Currency,
-			},
+		// Update target merchandise with stable ID
+		if stableID != "" {
+			deliveryLines[0]["targetMerchandise"] = map[string]interface{}{
+				"lines": []map[string]interface{}{
+					{
+						"stableId": stableID,
+					},
+				},
+			}
 		}
 	}
 

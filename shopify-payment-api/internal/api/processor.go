@@ -283,9 +283,8 @@ func (p *PaymentProcessor) createCheckout(ctx context.Context, siteURL, variantI
 		return nil, fmt.Errorf("failed to extract attempt token")
 	}
 
-	// Store attempt token in checkout data (we'll add this field)
-	checkoutData.SessionToken = checkoutData.SessionToken
-	// Note: We should add AttemptToken to CheckoutData struct
+	// Store attempt token in checkout data
+	checkoutData.AttemptToken = attemptToken
 
 	return checkoutData, nil
 }
@@ -297,7 +296,8 @@ func (p *PaymentProcessor) executeProposals(ctx context.Context, task *workers.T
 
 	// Build GraphQL variables
 	builder := &graphql.VariablesBuilder{
-		AttemptToken:  checkoutData.SessionToken, // This should be attempt token
+		SessionToken:  checkoutData.SessionToken, // Use the actual session token
+		QueueToken:    checkoutData.QueueToken,
 		MerchandiseID: checkoutData.MerchandiseID,
 		StableID:      checkoutData.StableID,
 		Currency:      checkoutData.Currency,
@@ -326,9 +326,9 @@ func (p *PaymentProcessor) executeProposals(ctx context.Context, task *workers.T
 
 	// Execute shipping proposal
 	variables := builder.BuildProposalVariables(false)
-	resp, err := p.GraphQL.Execute(ctx, graphqlURL, graphql.QUERY_PROPOSAL_SHIPPING, variables, headers)
+	resp, err := p.GraphQL.Execute(ctx, graphqlURL, graphql.QUERY_PROPOSAL, variables, headers)
 	if err != nil {
-		return nil, fmt.Errorf("shipping proposal failed: %w", err)
+		return nil, fmt.Errorf("proposal failed: %w", err)
 	}
 
 	// Parse proposal response
@@ -415,7 +415,8 @@ func (p *PaymentProcessor) submitPayment(ctx context.Context, task *workers.Task
 
 	// Build GraphQL variables
 	builder := &graphql.VariablesBuilder{
-		AttemptToken:  checkoutData.SessionToken,
+		SessionToken:  checkoutData.SessionToken, // Use actual session token
+		QueueToken:    checkoutData.QueueToken,
 		MerchandiseID: checkoutData.MerchandiseID,
 		StableID:      proposalData.StableID,
 		Currency:      proposalData.Currency,
@@ -444,9 +445,9 @@ func (p *PaymentProcessor) submitPayment(ctx context.Context, task *workers.Task
 		"X-Checkout-One-Session-Token": checkoutData.SessionToken,
 	}
 
-	// Execute submit mutation
-	variables := builder.BuildSubmitVariables(proposalData.DeliveryStrategy, proposalData.ShippingAmount, proposalData.TaxAmount)
-	resp, err := p.GraphQL.Execute(ctx, graphqlURL, graphql.MUTATION_SUBMIT_PAYMENT, variables, headers)
+	// Execute submit mutation - use the new signature
+	variables := builder.BuildSubmitVariables(proposalData.DeliveryStrategy, proposalData.StableID)
+	resp, err := p.GraphQL.Execute(ctx, graphqlURL, graphql.MUTATION_SUBMIT, variables, headers)
 	if err != nil {
 		return nil, fmt.Errorf("submit mutation failed: %w", err)
 	}
