@@ -338,8 +338,8 @@ func (p *PaymentProcessor) executeProposals(ctx context.Context, task *workers.T
 		},
 	}
 
-	// Build headers
-	graphqlURL := fmt.Sprintf("%s/api/graphql", task.SiteURL)
+	// Build headers - use /checkouts/unstable/graphql endpoint (matches Python implementation)
+	graphqlURL := fmt.Sprintf("%s/checkouts/unstable/graphql", task.SiteURL)
 	headers := map[string]string{
 		"Accept":                       "application/json",
 		"Content-Type":                 "application/json",
@@ -459,8 +459,8 @@ func (p *PaymentProcessor) submitPayment(ctx context.Context, task *workers.Task
 		},
 	}
 
-	// Build headers
-	graphqlURL := fmt.Sprintf("%s/api/graphql", task.SiteURL)
+	// Build headers - use /checkouts/unstable/graphql endpoint (matches Python implementation)
+	graphqlURL := fmt.Sprintf("%s/checkouts/unstable/graphql", task.SiteURL)
 	headers := map[string]string{
 		"Accept":                       "application/json",
 		"Content-Type":                 "application/json",
