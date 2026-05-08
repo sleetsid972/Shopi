@@ -254,27 +254,26 @@ func (b *VariablesBuilder) BuildProposalVariables(includePayment bool) map[strin
 							"phone":       b.Address.Phone,
 						},
 					},
-					"targetMerchandiseLines": []map[string]interface{}{
-						{
-							"merchandiseId": "gid://shopify/ProductVariantMerchandise/" + b.MerchandiseID,
-							"quantity": map[string]interface{}{
-								"items": 1,
+					"targetMerchandiseLines": map[string]interface{}{
+						"lines": []map[string]interface{}{
+							{
+								"stableId": b.StableID,
 							},
 						},
 					},
-					"selectedDeliveryStrategy":  nil,
-					"expectedTotalPrice":        nil,
-					"deliveryMethodTypes":       []string{},
 				},
 			},
-			"noDeliveryRequired": false,
 		},
 		"merchandise": map[string]interface{}{
 			"merchandiseLines": []map[string]interface{}{
 				{
-					"merchandiseId": "gid://shopify/ProductVariantMerchandise/" + b.MerchandiseID,
+					"merchandise": map[string]interface{}{
+						"variantId": b.MerchandiseID,
+					},
 					"quantity": map[string]interface{}{
-						"items": 1,
+						"items": map[string]interface{}{
+							"value": 1,
+						},
 					},
 				},
 			},
