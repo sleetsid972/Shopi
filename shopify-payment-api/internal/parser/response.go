@@ -2,6 +2,7 @@ package parser
 
 import (
 	"fmt"
+	"os"
 	"regexp"
 	"strconv"
 	"strings"
@@ -266,6 +267,34 @@ func (p *Parser) ParseCheckoutPage(html string) (*CheckoutData, error) {
 		Currency: "USD",
 	}
 
+	// Save HTML to file for debugging
+	os.WriteFile("/tmp/shopify_checkout_debug.html", []byte(html), 0644)
+
+	// Log snippet of HTML around potential token locations
+	if idx := strings.Index(html, "sessionToken"); idx != -1 {
+		start := idx - 200
+		if start < 0 {
+			start = 0
+		}
+		end := idx + 300
+		if end > len(html) {
+			end = len(html)
+		}
+		fmt.Printf("\n[DEBUG] HTML snippet around 'sessionToken':\n%s\n\n", html[start:end])
+	}
+
+	if idx := strings.Index(html, "serialized-sessionToken"); idx != -1 {
+		start := idx - 100
+		if start < 0 {
+			start = 0
+		}
+		end := idx + 400
+		if end > len(html) {
+			end = len(html)
+		}
+		fmt.Printf("\n[DEBUG] HTML snippet around 'serialized-sessionToken':\n%s\n\n", html[start:end])
+	}
+
 	// Unescape HTML entities for better pattern matching
 	unescapedHTML := strings.ReplaceAll(html, "&quot;", "\"")
 	unescapedHTML = strings.ReplaceAll(unescapedHTML, "&amp;", "&")
@@ -323,6 +352,17 @@ func (p *Parser) ParseCheckoutPage(html string) (*CheckoutData, error) {
 		if match := re.FindStringSubmatch(unescapedHTML); len(match) > 1 {
 			result.SessionToken = match[1]
 		}
+	}
+
+	// Log extraction result
+	if result.SessionToken == "" {
+		fmt.Printf("\n[ERROR] All 9 session token extraction patterns failed!\n")
+		fmt.Printf("[ERROR] HTML saved to: /tmp/shopify_checkout_debug.html\n")
+		fmt.Printf("[ERROR] HTML length: %d bytes\n", len(html))
+		fmt.Printf("[ERROR] Contains 'sessionToken': %v\n", strings.Contains(html, "sessionToken"))
+		fmt.Printf("[ERROR] Contains 'serialized-sessionToken': %v\n", strings.Contains(html, "serialized-sessionToken"))
+	} else {
+		fmt.Printf("\n[SUCCESS] Session token extracted: %s\n", result.SessionToken[:20]+"...")
 	}
 
 	// Extract queue token
