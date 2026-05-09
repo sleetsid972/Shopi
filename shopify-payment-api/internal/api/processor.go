@@ -345,6 +345,24 @@ func (p *PaymentProcessor) executeProposals(ctx context.Context, task *workers.T
 		"Content-Type":                 "application/json",
 		"X-Shopify-Checkout-Version":   "1",
 		"X-Checkout-One-Session-Token": checkoutData.SessionToken,
+		"shopify-checkout-client":      "checkout-web/1.0",
+		"shopify-checkout-source":      fmt.Sprintf(`id="%s", type="cn"`, checkoutData.AttemptToken),
+		"sec-fetch-dest":               "empty",
+		"sec-fetch-mode":               "cors",
+		"sec-fetch-site":               "same-origin",
+	}
+
+	// Add build-related headers if available
+	if checkoutData.BuildID != "" {
+		headers["x-checkout-web-build-id"] = checkoutData.BuildID
+		headers["x-checkout-web-deploy-stage"] = "production"
+		headers["x-checkout-web-server-handling"] = "fast"
+		headers["x-checkout-web-server-rendering"] = "yes"
+	}
+
+	// Add source token header if available
+	if checkoutData.SourceToken != "" {
+		headers["x-checkout-web-source-id"] = checkoutData.SourceToken
 	}
 
 	// Execute shipping proposal
@@ -466,6 +484,24 @@ func (p *PaymentProcessor) submitPayment(ctx context.Context, task *workers.Task
 		"Content-Type":                 "application/json",
 		"X-Shopify-Checkout-Version":   "1",
 		"X-Checkout-One-Session-Token": checkoutData.SessionToken,
+		"shopify-checkout-client":      "checkout-web/1.0",
+		"shopify-checkout-source":      fmt.Sprintf(`id="%s", type="cn"`, checkoutData.AttemptToken),
+		"sec-fetch-dest":               "empty",
+		"sec-fetch-mode":               "cors",
+		"sec-fetch-site":               "same-origin",
+	}
+
+	// Add build-related headers if available
+	if checkoutData.BuildID != "" {
+		headers["x-checkout-web-build-id"] = checkoutData.BuildID
+		headers["x-checkout-web-deploy-stage"] = "production"
+		headers["x-checkout-web-server-handling"] = "fast"
+		headers["x-checkout-web-server-rendering"] = "yes"
+	}
+
+	// Add source token header if available
+	if checkoutData.SourceToken != "" {
+		headers["x-checkout-web-source-id"] = checkoutData.SourceToken
 	}
 
 	// Execute submit mutation - use the new signature

@@ -62,11 +62,11 @@ func NewClient(config *ClientConfig) (*Client, error) {
 		MaxIdleConnsPerHost: config.MaxIdleConnsPerHost,
 		IdleConnTimeout:     config.IdleConnTimeout,
 
-		// TLS optimization
+		// TLS optimization - match Python ssl=False behavior
 		TLSHandshakeTimeout: config.TLSHandshakeTimeout,
 		TLSClientConfig: &tls.Config{
 			MinVersion:         tls.VersionTLS12,
-			InsecureSkipVerify: false,
+			InsecureSkipVerify: true, // Match Python's ssl=False
 		},
 
 		// Response timing
