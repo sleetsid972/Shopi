@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"net/url"
 	"regexp"
+	"strconv"
 	"strings"
 	"time"
 
@@ -192,7 +193,26 @@ func (p *PaymentProcessor) Process(ctx context.Context, task *workers.Task) (*mo
 	}, nil
 }
 
-// fetchFirstProduct fetches the first available product variant
+// ProductsResponse represents the JSON response from /products.json
+type ProductsResponse struct {
+	Products []Product `json:"products"`
+}
+
+// Product represents a Shopify product
+type Product struct {
+	Handle   string    `json:"handle"`
+	Variants []Variant `json:"variants"`
+}
+
+// Variant represents a product variant
+type Variant struct {
+	ID        int64   `json:"id"`
+	Available bool    `json:"available"`
+	Price     string  `json:"price"`
+}
+
+// fetchFirstProduct fetches the cheapest available product variant ID
+// Matches Python fetch_products function behavior
 func (p *PaymentProcessor) fetchFirstProduct(ctx context.Context, siteURL string) (string, error) {
 	productsURL := fmt.Sprintf("%s/products.json?limit=1", siteURL)
 
@@ -213,15 +233,70 @@ func (p *PaymentProcessor) fetchFirstProduct(ctx context.Context, siteURL string
 		return "", fmt.Errorf("products endpoint returned status %d", resp.StatusCode)
 	}
 
-	// Parse response to extract variant ID
-	body, _ := io.ReadAll(resp.Body)
-	re := regexp.MustCompile(`"variants":\s*\[\s*\{\s*"id":\s*(\d+)`)
-	matches := re.FindStringSubmatch(string(body))
-	if len(matches) < 2 {
-		return "", fmt.Errorf("no variants found")
+	// Unmarshal JSON response
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return "", err
 	}
 
-	return matches[1], nil
+	var productsResp ProductsResponse
+	if err := json.Unmarshal(body, &productsResp); err != nil {
+		return "", fmt.Errorf("failed to parse products JSON: %w", err)
+	}
+
+	if len(productsResp.Products) == 0 {
+		return "", fmt.Errorf("no products found")
+	}
+
+	// Find the cheapest available variant
+	minPrice := float64(999999999) // Use a large number instead of infinity
+	var cheapestVariantID string
+
+	for _, product := range productsResp.Products {
+		if len(product.Variants) == 0 {
+			continue
+		}
+
+		for _, variant := range product.Variants {
+			// Skip unavailable variants (available must be explicitly true)
+			if !variant.Available {
+				continue
+			}
+
+			// Parse price
+			price, err := parsePrice(variant.Price)
+			if err != nil {
+				p.Logger.Warnf("Failed to parse variant price '%s': %v", variant.Price, err)
+				continue
+			}
+
+			// Track cheapest variant
+			if price < minPrice {
+				minPrice = price
+				cheapestVariantID = fmt.Sprintf("%d", variant.ID)
+			}
+		}
+	}
+
+	if cheapestVariantID == "" {
+		return "", fmt.Errorf("no valid products")
+	}
+
+	p.Logger.Infof("Found cheapest available variant: ID=%s, Price=%.2f", cheapestVariantID, minPrice)
+	return cheapestVariantID, nil
+}
+
+// parsePrice parses a price string to float64
+func parsePrice(priceStr string) (float64, error) {
+	// Remove commas from price string
+	priceStr = strings.ReplaceAll(priceStr, ",", "")
+
+	price, err := strconv.ParseFloat(priceStr, 64)
+	if err != nil {
+		return 0, err
+	}
+
+	return price, nil
 }
 
 // createCheckout creates a checkout session
