@@ -32,6 +32,9 @@ type ProposalData struct {
 	Gateway          string
 	Currency         string
 	StableID         string
+	CheckpointData   string   // Checkpoint data for two-step proposal flow
+	QueueToken       string   // Queue token for rate limiting
+	ChangesetTokens  []string // Changeset tokens for delivery proposal
 }
 
 // SubmitData contains parsed submit response data
@@ -112,6 +115,26 @@ func (p *Parser) ParseProposalResponse(data map[string]interface{}) (*ProposalDa
 	typename, _ := resultData["__typename"].(string)
 	if typename != "NegotiationResultAvailable" {
 		return nil, fmt.Errorf("unexpected proposal result type: %s (expected NegotiationResultAvailable)", typename)
+	}
+
+	// Extract checkpoint data for two-step proposal flow
+	if checkpointData, ok := resultData["checkpointData"].(string); ok {
+		result.CheckpointData = checkpointData
+	}
+
+	// Extract queue token
+	if queueToken, ok := resultData["queueToken"].(string); ok {
+		result.QueueToken = queueToken
+	}
+
+	// Extract changeset tokens
+	if changesetTokens, ok := resultData["changesetTokens"].([]interface{}); ok {
+		result.ChangesetTokens = make([]string, 0, len(changesetTokens))
+		for _, token := range changesetTokens {
+			if tokenStr, ok := token.(string); ok {
+				result.ChangesetTokens = append(result.ChangesetTokens, tokenStr)
+			}
+		}
 	}
 
 	// Get seller proposal

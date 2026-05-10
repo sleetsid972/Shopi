@@ -93,16 +93,18 @@ query PollForReceipt($receiptId: ID!, $sessionToken: String!) {
 
 // VariablesBuilder helps build GraphQL variables
 type VariablesBuilder struct {
-	SessionToken  string
-	QueueToken    string
-	MerchandiseID string
-	StableID      string
-	Currency      string
-	Subtotal      string
-	PaymentID     string
-	PaymentToken  string
-	Email         string
-	Address       AddressData
+	SessionToken    string
+	QueueToken      string
+	MerchandiseID   string
+	StableID        string
+	Currency        string
+	Subtotal        string
+	PaymentID       string
+	PaymentToken    string
+	Email           string
+	CheckpointData  string   // Checkpoint data from first proposal
+	ChangesetTokens []string // Changeset tokens from first proposal
+	Address         AddressData
 }
 
 // AddressData contains address information
@@ -134,6 +136,18 @@ func (b *VariablesBuilder) BuildProposalVariables(includePayment bool) map[strin
 			"sessionToken": b.SessionToken,
 		},
 		"queueToken": b.QueueToken,
+		"checkpointData": func() interface{} {
+			if b.CheckpointData != "" {
+				return b.CheckpointData
+			}
+			return nil
+		}(),
+		"changesetTokens": func() interface{} {
+			if len(b.ChangesetTokens) > 0 {
+				return b.ChangesetTokens
+			}
+			return nil
+		}(),
 		"discounts": map[string]interface{}{
 			"lines":                      []interface{}{},
 			"acceptUnexpectedDiscounts": true,

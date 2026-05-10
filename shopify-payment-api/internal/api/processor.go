@@ -483,11 +483,12 @@ func (p *PaymentProcessor) executeProposals(ctx context.Context, task *workers.T
 		headers["x-checkout-web-source-id"] = checkoutData.SourceToken
 	}
 
-	// Execute shipping proposal
+	// Execute shipping proposal (first proposal)
+	p.Logger.Info("Executing first proposal (shipping)...")
 	variables := builder.BuildProposalVariables(false)
 	resp, err := p.GraphQL.Execute(ctx, graphqlURL, graphql.QUERY_PROPOSAL, variables, headers)
 	if err != nil {
-		return nil, fmt.Errorf("proposal failed: %w", err)
+		return nil, fmt.Errorf("first proposal failed: %w", err)
 	}
 
 	// Check for GraphQL errors or null data before parsing
@@ -496,17 +497,58 @@ func (p *PaymentProcessor) executeProposals(ctx context.Context, task *workers.T
 		for i, e := range resp.Errors {
 			errorMessages[i] = e.Message
 		}
-		return nil, fmt.Errorf("GraphQL errors: %v", errorMessages)
+		return nil, fmt.Errorf("first proposal GraphQL errors: %v", errorMessages)
 	}
 	if resp.Data == nil {
-		return nil, fmt.Errorf("GraphQL response has null data field")
+		return nil, fmt.Errorf("first proposal response has null data field")
 	}
 
-	// Parse proposal response
+	// Parse first proposal response
 	proposalData, err := p.Parser.ParseProposalResponse(resp.Data)
 	if err != nil {
-		return nil, fmt.Errorf("failed to parse proposal: %w", err)
+		return nil, fmt.Errorf("failed to parse first proposal: %w", err)
 	}
+
+	p.Logger.Infof("First proposal completed. CheckpointData: %v, QueueToken: %v, ChangesetTokens: %v",
+		proposalData.CheckpointData != "", proposalData.QueueToken != "", len(proposalData.ChangesetTokens))
+
+	// Sleep for 3 seconds before second proposal (matches Python implementation)
+	time.Sleep(3 * time.Second)
+
+	// Execute second proposal (delivery selection) - this accepts tax terms
+	p.Logger.Info("Executing second proposal (delivery selection)...")
+
+	// Update builder with checkpoint and queue tokens from first proposal
+	builder.CheckpointData = proposalData.CheckpointData
+	builder.QueueToken = proposalData.QueueToken
+	builder.ChangesetTokens = proposalData.ChangesetTokens
+
+	// Use same variables for second proposal (Python does this in a loop with same data)
+	variables = builder.BuildProposalVariables(false)
+	resp, err = p.GraphQL.Execute(ctx, graphqlURL, graphql.QUERY_PROPOSAL, variables, headers)
+	if err != nil {
+		return nil, fmt.Errorf("second proposal failed: %w", err)
+	}
+
+	// Check for GraphQL errors or null data
+	if len(resp.Errors) > 0 {
+		errorMessages := make([]string, len(resp.Errors))
+		for i, e := range resp.Errors {
+			errorMessages[i] = e.Message
+		}
+		return nil, fmt.Errorf("second proposal GraphQL errors: %v", errorMessages)
+	}
+	if resp.Data == nil {
+		return nil, fmt.Errorf("second proposal response has null data field")
+	}
+
+	// Parse second proposal response (this should have accepted tax terms)
+	proposalData, err = p.Parser.ParseProposalResponse(resp.Data)
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse second proposal: %w", err)
+	}
+
+	p.Logger.Info("Second proposal completed successfully")
 
 	// Update builder with payment info
 	builder.PaymentID = proposalData.PaymentID
