@@ -49,6 +49,18 @@ func NewPaymentProcessor(client *network.Client, classifier *classifier.Classifi
 func (p *PaymentProcessor) Process(ctx context.Context, task *workers.Task) (*models.PaymentResponse, error) {
 	startTime := time.Now()
 
+	// Create fresh cookie jar for this task to prevent cookie leakage
+	// This matches Python's isolated aiohttp.ClientSession per request
+	checkoutClient, err := p.Client.CloneWithFreshCookieJar()
+	if err != nil {
+		return &models.PaymentResponse{
+			Status:    models.StatusError,
+			Message:   fmt.Sprintf("Failed to create isolated client: %v", err),
+			Timestamp: time.Now(),
+			Duration:  time.Since(startTime).Milliseconds(),
+		}, nil
+	}
+
 	// Step 1: Fetch first product from shop
 	p.Logger.Infof("Task %s: Fetching product from %s", task.ID, task.SiteURL)
 	variantID, err := p.fetchFirstProduct(ctx, task.SiteURL)
@@ -63,7 +75,7 @@ func (p *PaymentProcessor) Process(ctx context.Context, task *workers.Task) (*mo
 
 	// Step 2: Add to cart and navigate to checkout
 	p.Logger.Infof("Task %s: Creating checkout session", task.ID)
-	checkoutData, err := p.createCheckout(ctx, task.SiteURL, variantID)
+	checkoutData, err := p.createCheckout(ctx, checkoutClient, task.SiteURL, variantID)
 	if err != nil {
 		return &models.PaymentResponse{
 			Status:    models.StatusError,
@@ -75,7 +87,7 @@ func (p *PaymentProcessor) Process(ctx context.Context, task *workers.Task) (*mo
 
 	// Step 3: Execute GraphQL proposal queries
 	p.Logger.Infof("Task %s: Executing GraphQL proposals", task.ID)
-	proposalData, err := p.executeProposals(ctx, task, checkoutData)
+	proposalData, err := p.executeProposals(ctx, checkoutClient, task, checkoutData)
 	if err != nil {
 		// Safe defaults if proposalData is nil
 		gateway := ""
@@ -99,7 +111,7 @@ func (p *PaymentProcessor) Process(ctx context.Context, task *workers.Task) (*mo
 
 	// Step 4: Vault credit card
 	p.Logger.Infof("Task %s: Vaulting card", task.ID)
-	paymentToken, err := p.vaultCard(ctx, task, checkoutData)
+	paymentToken, err := p.vaultCard(ctx, checkoutClient, task, checkoutData)
 	if err != nil {
 		// Safe defaults if proposalData is nil
 		gateway := ""
@@ -123,7 +135,7 @@ func (p *PaymentProcessor) Process(ctx context.Context, task *workers.Task) (*mo
 
 	// Step 5: Submit payment
 	p.Logger.Infof("Task %s: Submitting payment", task.ID)
-	submitData, err := p.submitPayment(ctx, task, checkoutData, proposalData, paymentToken)
+	submitData, err := p.submitPayment(ctx, checkoutClient, task, checkoutData, proposalData, paymentToken)
 	if err != nil {
 		// Safe defaults if proposalData is nil
 		gateway := ""
@@ -148,7 +160,7 @@ func (p *PaymentProcessor) Process(ctx context.Context, task *workers.Task) (*mo
 	// Step 6: Handle pending (poll if needed)
 	if submitData.ResultType == "SubmitPending" && submitData.PollURL != "" {
 		p.Logger.Infof("Task %s: Payment pending, polling...", task.ID)
-		submitData, err = p.pollPaymentStatus(ctx, submitData.PollURL, checkoutData.SessionToken)
+		submitData, err = p.pollPaymentStatus(ctx, checkoutClient, submitData.PollURL, checkoutData.SessionToken)
 		if err != nil {
 			// Safe defaults if proposalData is nil
 			gateway := ""
@@ -300,7 +312,7 @@ func parsePrice(priceStr string) (float64, error) {
 }
 
 // createCheckout creates a checkout session
-func (p *PaymentProcessor) createCheckout(ctx context.Context, siteURL, variantID string) (*parser.CheckoutData, error) {
+func (p *PaymentProcessor) createCheckout(ctx context.Context, client *network.Client, siteURL, variantID string) (*parser.CheckoutData, error) {
 	// Add to cart
 	cartURL := fmt.Sprintf("%s/cart/add.js", siteURL)
 	cartData := url.Values{}
@@ -315,7 +327,7 @@ func (p *PaymentProcessor) createCheckout(ctx context.Context, siteURL, variantI
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	req.Header.Set("Accept", "application/json")
 
-	resp, err := p.Client.Do(ctx, req)
+	resp, err := client.Do(ctx, req)
 	if err != nil {
 		return nil, err
 	}
@@ -424,7 +436,7 @@ func (p *PaymentProcessor) createCheckout(ctx context.Context, siteURL, variantI
 }
 
 // executeProposals executes the GraphQL proposal queries
-func (p *PaymentProcessor) executeProposals(ctx context.Context, task *workers.Task, checkoutData *parser.CheckoutData) (*parser.ProposalData, error) {
+func (p *PaymentProcessor) executeProposals(ctx context.Context, client *network.Client, task *workers.Task, checkoutData *parser.CheckoutData) (*parser.ProposalData, error) {
 	// Generate address
 	addr := p.AddrGen.Generate("US")
 
@@ -486,7 +498,10 @@ func (p *PaymentProcessor) executeProposals(ctx context.Context, task *workers.T
 	// Execute shipping proposal (first proposal)
 	p.Logger.Info("Executing first proposal (shipping)...")
 	variables := builder.BuildProposalVariables(false)
-	resp, err := p.GraphQL.Execute(ctx, graphqlURL, graphql.QUERY_PROPOSAL, variables, headers)
+
+	// Create GraphQL executor with isolated client for this task
+	graphqlExecutor := graphql.NewExecutor(client, p.Logger)
+	resp, err := graphqlExecutor.Execute(ctx, graphqlURL, graphql.QUERY_PROPOSAL, variables, headers)
 	if err != nil {
 		return nil, fmt.Errorf("first proposal failed: %w", err)
 	}
@@ -525,7 +540,7 @@ func (p *PaymentProcessor) executeProposals(ctx context.Context, task *workers.T
 
 	// Use same variables for second proposal (Python does this in a loop with same data)
 	variables = builder.BuildProposalVariables(false)
-	resp, err = p.GraphQL.Execute(ctx, graphqlURL, graphql.QUERY_PROPOSAL, variables, headers)
+	resp, err = graphqlExecutor.Execute(ctx, graphqlURL, graphql.QUERY_PROPOSAL, variables, headers)
 	if err != nil {
 		return nil, fmt.Errorf("second proposal failed: %w", err)
 	}
@@ -558,7 +573,7 @@ func (p *PaymentProcessor) executeProposals(ctx context.Context, task *workers.T
 }
 
 // vaultCard vaults the credit card and returns payment token
-func (p *PaymentProcessor) vaultCard(ctx context.Context, task *workers.Task, checkoutData *parser.CheckoutData) (string, error) {
+func (p *PaymentProcessor) vaultCard(ctx context.Context, client *network.Client, task *workers.Task, checkoutData *parser.CheckoutData) (string, error) {
 	// Generate address
 	addr := p.AddrGen.Generate("US")
 
@@ -594,7 +609,7 @@ func (p *PaymentProcessor) vaultCard(ctx context.Context, task *workers.Task, ch
 		req.Header.Set("shopify-identification-signature", checkoutData.IdentSignature)
 	}
 
-	resp, err := p.Client.Do(ctx, req)
+	resp, err := client.Do(ctx, req)
 	if err != nil {
 		return "", err
 	}
@@ -622,7 +637,7 @@ func (p *PaymentProcessor) vaultCard(ctx context.Context, task *workers.Task, ch
 }
 
 // submitPayment submits the payment
-func (p *PaymentProcessor) submitPayment(ctx context.Context, task *workers.Task, checkoutData *parser.CheckoutData, proposalData *parser.ProposalData, paymentToken string) (*parser.SubmitData, error) {
+func (p *PaymentProcessor) submitPayment(ctx context.Context, client *network.Client, task *workers.Task, checkoutData *parser.CheckoutData, proposalData *parser.ProposalData, paymentToken string) (*parser.SubmitData, error) {
 	// Generate address
 	addr := p.AddrGen.Generate("US")
 
@@ -678,7 +693,10 @@ func (p *PaymentProcessor) submitPayment(ctx context.Context, task *workers.Task
 
 	// Execute submit mutation - use the new signature
 	variables := builder.BuildSubmitVariables(proposalData.DeliveryStrategy, proposalData.StableID)
-	resp, err := p.GraphQL.Execute(ctx, graphqlURL, graphql.MUTATION_SUBMIT, variables, headers)
+
+	// Create GraphQL executor with isolated client for this task
+	graphqlExecutor := graphql.NewExecutor(client, p.Logger)
+	resp, err := graphqlExecutor.Execute(ctx, graphqlURL, graphql.MUTATION_SUBMIT, variables, headers)
 	if err != nil {
 		return nil, fmt.Errorf("submit mutation failed: %w", err)
 	}
@@ -705,7 +723,7 @@ func (p *PaymentProcessor) submitPayment(ctx context.Context, task *workers.Task
 }
 
 // pollPaymentStatus polls the payment status URL
-func (p *PaymentProcessor) pollPaymentStatus(ctx context.Context, pollURL, sessionToken string) (*parser.SubmitData, error) {
+func (p *PaymentProcessor) pollPaymentStatus(ctx context.Context, client *network.Client, pollURL, sessionToken string) (*parser.SubmitData, error) {
 	maxAttempts := 3
 	delay := 2 * time.Second
 
@@ -719,7 +737,7 @@ func (p *PaymentProcessor) pollPaymentStatus(ctx context.Context, pollURL, sessi
 
 		req.Header.Set("X-Checkout-One-Session-Token", sessionToken)
 
-		resp, err := p.Client.Do(ctx, req)
+		resp, err := client.Do(ctx, req)
 		if err != nil {
 			continue
 		}

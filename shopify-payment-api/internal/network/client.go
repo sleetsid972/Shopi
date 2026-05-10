@@ -153,3 +153,27 @@ func (c *Client) Get(ctx context.Context, url string, headers map[string]string)
 func (c *Client) Close() {
 	c.httpClient.CloseIdleConnections()
 }
+
+// CloneWithFreshCookieJar creates a new Client with isolated cookie jar
+// This prevents cookie leakage between tasks, matching Python's per-request session isolation
+func (c *Client) CloneWithFreshCookieJar() (*Client, error) {
+	// Create new cookie jar for this task
+	jar, err := cookiejar.New(nil)
+	if err != nil {
+		return nil, err
+	}
+
+	// Create a shallow copy of the http.Client with new jar
+	// This reuses the Transport (connection pool) but isolates cookies
+	newHTTPClient := &http.Client{
+		Transport:     c.httpClient.Transport,
+		Timeout:       c.httpClient.Timeout,
+		Jar:           jar, // Fresh cookie jar per task
+		CheckRedirect: c.httpClient.CheckRedirect,
+	}
+
+	return &Client{
+		httpClient: newHTTPClient,
+		proxyURL:   c.proxyURL,
+	}, nil
+}
