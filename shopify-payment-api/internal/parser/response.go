@@ -108,6 +108,12 @@ func (p *Parser) ParseProposalResponse(data map[string]interface{}) (*ProposalDa
 		return nil, fmt.Errorf("invalid result format")
 	}
 
+	// Check __typename to ensure it's NegotiationResultAvailable
+	typename, _ := resultData["__typename"].(string)
+	if typename != "NegotiationResultAvailable" {
+		return nil, fmt.Errorf("unexpected proposal result type: %s (expected NegotiationResultAvailable)", typename)
+	}
+
 	// Get seller proposal
 	sellerProposal, ok := resultData["sellerProposal"].(map[string]interface{})
 	if !ok {

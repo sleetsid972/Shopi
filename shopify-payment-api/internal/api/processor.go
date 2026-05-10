@@ -76,12 +76,21 @@ func (p *PaymentProcessor) Process(ctx context.Context, task *workers.Task) (*mo
 	p.Logger.Infof("Task %s: Executing GraphQL proposals", task.ID)
 	proposalData, err := p.executeProposals(ctx, task, checkoutData)
 	if err != nil {
+		// Safe defaults if proposalData is nil
+		gateway := ""
+		amount := "0.00"
+		currency := "USD"
+		if proposalData != nil {
+			gateway = proposalData.Gateway
+			amount = fmt.Sprintf("%.2f", proposalData.TotalAmount)
+			currency = proposalData.Currency
+		}
 		return &models.PaymentResponse{
 			Status:    models.StatusError,
 			Message:   fmt.Sprintf("Proposal failed: %v", err),
-			Gateway:   proposalData.Gateway,
-			Amount:    fmt.Sprintf("%.2f", proposalData.TotalAmount),
-			Currency:  proposalData.Currency,
+			Gateway:   gateway,
+			Amount:    amount,
+			Currency:  currency,
 			Timestamp: time.Now(),
 			Duration:  time.Since(startTime).Milliseconds(),
 		}, nil
@@ -91,12 +100,21 @@ func (p *PaymentProcessor) Process(ctx context.Context, task *workers.Task) (*mo
 	p.Logger.Infof("Task %s: Vaulting card", task.ID)
 	paymentToken, err := p.vaultCard(ctx, task, checkoutData)
 	if err != nil {
+		// Safe defaults if proposalData is nil
+		gateway := ""
+		amount := "0.00"
+		currency := "USD"
+		if proposalData != nil {
+			gateway = proposalData.Gateway
+			amount = fmt.Sprintf("%.2f", proposalData.TotalAmount)
+			currency = proposalData.Currency
+		}
 		return &models.PaymentResponse{
 			Status:    models.StatusError,
 			Message:   fmt.Sprintf("Card vault failed: %v", err),
-			Gateway:   proposalData.Gateway,
-			Amount:    fmt.Sprintf("%.2f", proposalData.TotalAmount),
-			Currency:  proposalData.Currency,
+			Gateway:   gateway,
+			Amount:    amount,
+			Currency:  currency,
 			Timestamp: time.Now(),
 			Duration:  time.Since(startTime).Milliseconds(),
 		}, nil
@@ -106,12 +124,21 @@ func (p *PaymentProcessor) Process(ctx context.Context, task *workers.Task) (*mo
 	p.Logger.Infof("Task %s: Submitting payment", task.ID)
 	submitData, err := p.submitPayment(ctx, task, checkoutData, proposalData, paymentToken)
 	if err != nil {
+		// Safe defaults if proposalData is nil
+		gateway := ""
+		amount := "0.00"
+		currency := "USD"
+		if proposalData != nil {
+			gateway = proposalData.Gateway
+			amount = fmt.Sprintf("%.2f", proposalData.TotalAmount)
+			currency = proposalData.Currency
+		}
 		return &models.PaymentResponse{
 			Status:    models.StatusError,
 			Message:   fmt.Sprintf("Submit failed: %v", err),
-			Gateway:   proposalData.Gateway,
-			Amount:    fmt.Sprintf("%.2f", proposalData.TotalAmount),
-			Currency:  proposalData.Currency,
+			Gateway:   gateway,
+			Amount:    amount,
+			Currency:  currency,
 			Timestamp: time.Now(),
 			Duration:  time.Since(startTime).Milliseconds(),
 		}, nil
@@ -122,12 +149,21 @@ func (p *PaymentProcessor) Process(ctx context.Context, task *workers.Task) (*mo
 		p.Logger.Infof("Task %s: Payment pending, polling...", task.ID)
 		submitData, err = p.pollPaymentStatus(ctx, submitData.PollURL, checkoutData.SessionToken)
 		if err != nil {
+			// Safe defaults if proposalData is nil
+			gateway := ""
+			amount := "0.00"
+			currency := "USD"
+			if proposalData != nil {
+				gateway = proposalData.Gateway
+				amount = fmt.Sprintf("%.2f", proposalData.TotalAmount)
+				currency = proposalData.Currency
+			}
 			return &models.PaymentResponse{
 				Status:    models.StatusError,
 				Message:   fmt.Sprintf("Poll failed: %v", err),
-				Gateway:   proposalData.Gateway,
-				Amount:    fmt.Sprintf("%.2f", proposalData.TotalAmount),
-				Currency:  proposalData.Currency,
+				Gateway:   gateway,
+				Amount:    amount,
+				Currency:  currency,
 				Timestamp: time.Now(),
 				Duration:  time.Since(startTime).Milliseconds(),
 			}, nil
