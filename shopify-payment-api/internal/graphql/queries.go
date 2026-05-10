@@ -101,6 +101,7 @@ type VariablesBuilder struct {
 	Subtotal      string
 	PaymentID     string
 	PaymentToken  string
+	Email         string
 	Address       AddressData
 }
 
@@ -142,13 +143,13 @@ func (b *VariablesBuilder) BuildProposalVariables(includePayment bool) map[strin
 				"presentmentCurrency": b.Currency,
 				"countryCode":         b.Address.CountryCode,
 			},
-			"email":            "",
+			"email":            b.Email,
 			"emailChanged":     false,
 			"phoneCountryCode": b.Address.CountryCode,
 			"marketingConsent": []map[string]interface{}{
 				{
 					"email": map[string]interface{}{
-						"value": "",
+						"value": b.Email,
 					},
 				},
 			},

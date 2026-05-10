@@ -353,6 +353,12 @@ func (p *PaymentProcessor) executeProposals(ctx context.Context, task *workers.T
 	// Generate address
 	addr := p.AddrGen.Generate("US")
 
+	// Generate email from name
+	email := fmt.Sprintf("%s.%s@example.com", strings.ToLower(addr.FirstName), strings.ToLower(addr.LastName))
+	if addr.FirstName == "" || addr.LastName == "" {
+		email = "customer@example.com"
+	}
+
 	// Build GraphQL variables
 	builder := &graphql.VariablesBuilder{
 		SessionToken:  checkoutData.SessionToken, // Use the actual session token
@@ -361,6 +367,7 @@ func (p *PaymentProcessor) executeProposals(ctx context.Context, task *workers.T
 		StableID:      checkoutData.StableID,
 		Currency:      checkoutData.Currency,
 		Subtotal:      checkoutData.Subtotal,
+		Email:         email,
 		Address: graphql.AddressData{
 			FirstName:   addr.FirstName,
 			LastName:    addr.LastName,
