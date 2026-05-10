@@ -372,6 +372,18 @@ func (p *PaymentProcessor) executeProposals(ctx context.Context, task *workers.T
 		return nil, fmt.Errorf("proposal failed: %w", err)
 	}
 
+	// Check for GraphQL errors or null data before parsing
+	if len(resp.Errors) > 0 {
+		errorMessages := make([]string, len(resp.Errors))
+		for i, e := range resp.Errors {
+			errorMessages[i] = e.Message
+		}
+		return nil, fmt.Errorf("GraphQL errors: %v", errorMessages)
+	}
+	if resp.Data == nil {
+		return nil, fmt.Errorf("GraphQL response has null data field")
+	}
+
 	// Parse proposal response
 	proposalData, err := p.Parser.ParseProposalResponse(resp.Data)
 	if err != nil {
@@ -509,6 +521,18 @@ func (p *PaymentProcessor) submitPayment(ctx context.Context, task *workers.Task
 	resp, err := p.GraphQL.Execute(ctx, graphqlURL, graphql.MUTATION_SUBMIT, variables, headers)
 	if err != nil {
 		return nil, fmt.Errorf("submit mutation failed: %w", err)
+	}
+
+	// Check for GraphQL errors or null data before parsing
+	if len(resp.Errors) > 0 {
+		errorMessages := make([]string, len(resp.Errors))
+		for i, e := range resp.Errors {
+			errorMessages[i] = e.Message
+		}
+		return nil, fmt.Errorf("GraphQL errors: %v", errorMessages)
+	}
+	if resp.Data == nil {
+		return nil, fmt.Errorf("GraphQL response has null data field")
 	}
 
 	// Parse submit response

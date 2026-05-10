@@ -244,18 +244,22 @@ func (b *VariablesBuilder) BuildProposalVariables(includePayment bool) map[strin
 		"buyerIdentity": map[string]interface{}{
 			"customer": map[string]interface{}{
 				"presentmentCurrency": b.Currency,
-				"countryCode":        b.Address.CountryCode,
+				"countryCode":         b.Address.CountryCode,
 			},
 			"email":            "",
 			"emailChanged":     false,
 			"phoneCountryCode": b.Address.CountryCode,
-			"shopPayOptInPhone": map[string]interface{}{
-				"number": b.Address.Phone,
+			"marketingConsent": []map[string]interface{}{
+				{
+					"email": map[string]interface{}{
+						"value": "",
+					},
+				},
 			},
-			"acceptsEmailMarketing":     false,
-			"acceptsSmsMarketing":       false,
-			"languageCode":             "EN",
-			"usesSameAddressForBilling": true,
+			"shopPayOptInPhone": map[string]interface{}{
+				"countryCode": b.Address.CountryCode,
+			},
+			"rememberMe": false,
 		},
 		"delivery": map[string]interface{}{
 			"deliveryLines": []map[string]interface{}{
