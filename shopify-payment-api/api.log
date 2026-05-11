@@ -1,0 +1,11 @@
+{"level":"info","msg":"Starting Shopify Payment API...","time":"2026-05-11T08:46:58Z"}
+{"level":"info","msg":"Starting worker pool with 20 workers","time":"2026-05-11T08:46:58Z"}
+{"level":"info","msg":"HTTP server listening on :8080","time":"2026-05-11T08:46:58Z"}
+{"level":"info","msg":"Processing payment check: request_id=20260511084716-p0k8waym site=https://yallsweettea.com/products/sweet-tea-12-pack","time":"2026-05-11T08:47:16Z"}
+{"level":"info","msg":"Task 20260511084716-p0k8waym: Fetching product from https://yallsweettea.com/products/sweet-tea-12-pack","time":"2026-05-11T08:47:16Z"}
+{"level":"info","msg":"Processing completed: request_id=20260511084716-p0k8waym status=ERROR duration=1ms","time":"2026-05-11T08:47:16Z"}
+{"client_ip":"::1","duration_ms":1,"level":"info","method":"POST","msg":"Request processed","path":"/shopify/check","status":200,"time":"2026-05-11T08:47:16Z","user_agent":"curl/8.5.0"}
+{"level":"info","msg":"Shutting down server...","time":"2026-05-11T08:47:39Z"}
+{"level":"info","msg":"Shutting down worker pool...","time":"2026-05-11T08:47:39Z"}
+{"level":"info","msg":"All workers stopped gracefully","time":"2026-05-11T08:47:39Z"}
+{"level":"info","msg":"Server stopped","time":"2026-05-11T08:47:39Z"}
