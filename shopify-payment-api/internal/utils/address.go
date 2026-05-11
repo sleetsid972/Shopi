@@ -108,11 +108,11 @@ func (g *AddressGenerator) generateUS() *Address {
 	firstName := firstNames[g.rand.Intn(len(firstNames))]
 	lastName := lastNames[g.rand.Intn(len(lastNames))]
 
-	// Generate phone (US format)
+	// Generate phone (US format - plain 10 digits for Shopify compatibility)
 	areaCode := 200 + g.rand.Intn(800)
 	exchange := 200 + g.rand.Intn(800)
 	subscriber := g.rand.Intn(10000)
-	phone := fmt.Sprintf("+1%03d%03d%04d", areaCode, exchange, subscriber)
+	phone := fmt.Sprintf("%03d%03d%04d", areaCode, exchange, subscriber)
 
 	return &Address{
 		FirstName:   firstName,
