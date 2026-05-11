@@ -90,14 +90,18 @@ func (p *Parser) ParseProposalResponse(data map[string]interface{}) (*ProposalDa
 		return nil, fmt.Errorf("invalid negotiate format")
 	}
 
-	// Check for errors
+	// Check for errors (but ignore TAX_NEW_TAX_MUST_BE_ACCEPTED as it's handled by two-proposal flow)
 	if errors, ok := negotiate["errors"].([]interface{}); ok && len(errors) > 0 {
 		if firstError, ok := errors[0].(map[string]interface{}); ok {
 			code := GetString(firstError, "code")
 			message := GetString(firstError, "localizedMessage")
-			return nil, fmt.Errorf("negotiation failed: %s - %s", code, message)
+			// TAX_NEW_TAX_MUST_BE_ACCEPTED is not a fatal error - it signals need for second proposal
+			// The two-step proposal flow handles this automatically
+			if code != "TAX_NEW_TAX_MUST_BE_ACCEPTED" {
+				return nil, fmt.Errorf("negotiation failed: %s - %s", code, message)
+			}
+			// For TAX_NEW_TAX_MUST_BE_ACCEPTED, continue parsing to extract tokens for second proposal
 		}
-		return nil, fmt.Errorf("negotiation failed with unknown error")
 	}
 
 	// Get result

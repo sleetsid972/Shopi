@@ -495,13 +495,12 @@ func (p *PaymentProcessor) executeProposals(ctx context.Context, client *network
 		headers["x-checkout-web-source-id"] = checkoutData.SourceToken
 	}
 
-	// Execute shipping proposal (first proposal)
-	p.Logger.Info("Executing first proposal (shipping)...")
+	// Build proposal variables once (same variables used for both proposals like Python)
 	variables := builder.BuildProposalVariables(false)
 
 	// Log variables payload at debug level
 	if variablesJSON, err := json.Marshal(variables); err == nil {
-		p.Logger.Debugf("First proposal variables payload: %s", string(variablesJSON))
+		p.Logger.Debugf("Proposal variables payload: %s", string(variablesJSON))
 	}
 
 	// Log delivery phone specifically
@@ -509,84 +508,50 @@ func (p *PaymentProcessor) executeProposals(ctx context.Context, client *network
 
 	// Create GraphQL executor with isolated client for this task
 	graphqlExecutor := graphql.NewExecutor(client, p.Logger)
-	resp, err := graphqlExecutor.Execute(ctx, graphqlURL, graphql.QUERY_PROPOSAL, variables, headers)
-	if err != nil {
-		return nil, fmt.Errorf("first proposal failed: %w", err)
-	}
 
-	// Check for GraphQL errors or null data before parsing
-	if len(resp.Errors) > 0 {
-		errorMessages := make([]string, len(resp.Errors))
-		for i, e := range resp.Errors {
-			errorMessages[i] = e.Message
-		}
-		return nil, fmt.Errorf("first proposal GraphQL errors: %v", errorMessages)
-	}
-	if resp.Data == nil {
-		return nil, fmt.Errorf("first proposal response has null data field")
-	}
+	var proposalData *parser.ProposalData
+	var resp *models.GraphQLResponse
 
-	// Parse first proposal response
-	proposalData, err := p.Parser.ParseProposalResponse(resp.Data)
-	if err != nil {
-		return nil, fmt.Errorf("failed to parse first proposal: %w", err)
-	}
+	// Execute proposal twice (matches Python: for i in range(2))
+	// This handles TAX_NEW_TAX_MUST_BE_ACCEPTED by running proposal again with same variables
+	for i := 0; i < 2; i++ {
+		proposalNum := i + 1
+		p.Logger.Infof("Executing proposal %d/2...", proposalNum)
 
-	p.Logger.Infof("First proposal completed. CheckpointData: %v, QueueToken: %v, ChangesetTokens: %v",
-		proposalData.CheckpointData != "", proposalData.QueueToken != "", len(proposalData.ChangesetTokens))
-
-	// Check if we need to execute second proposal (if checkpoint or changeset tokens exist)
-	if proposalData.CheckpointData != "" || len(proposalData.ChangesetTokens) > 0 {
-		p.Logger.Info("Checkpoint/changeset tokens found, executing second proposal for tax acceptance...")
-
-		// Sleep for 3 seconds before second proposal (matches Python implementation)
-		time.Sleep(3 * time.Second)
-
-		// Update builder with data from first proposal for second proposal
-		builder.CheckpointData = proposalData.CheckpointData
-		builder.QueueToken = proposalData.QueueToken
-		builder.ChangesetTokens = proposalData.ChangesetTokens
-		builder.DeliveryStrategy = proposalData.DeliveryStrategy
-		builder.ShippingAmount = proposalData.ShippingAmount
-		builder.TaxAmount = proposalData.TaxAmount
-		builder.StableID = proposalData.StableID
-
-		// Build second proposal variables with updated delivery/tax information
-		variables = builder.BuildDeliveryProposalVariables()
-
-		// Log second proposal variables at debug level
-		if variablesJSON, err := json.Marshal(variables); err == nil {
-			p.Logger.Debugf("Second proposal variables payload: %s", string(variablesJSON))
-		}
-
-		// Execute second proposal (delivery selection) - this accepts tax terms
+		var err error
 		resp, err = graphqlExecutor.Execute(ctx, graphqlURL, graphql.QUERY_PROPOSAL, variables, headers)
 		if err != nil {
-			return nil, fmt.Errorf("second proposal failed: %w", err)
+			return nil, fmt.Errorf("proposal %d failed: %w", proposalNum, err)
 		}
 
-		// Check for GraphQL errors or null data
+		// Check for GraphQL errors or null data before parsing
 		if len(resp.Errors) > 0 {
 			errorMessages := make([]string, len(resp.Errors))
 			for i, e := range resp.Errors {
 				errorMessages[i] = e.Message
 			}
-			return nil, fmt.Errorf("second proposal GraphQL errors: %v", errorMessages)
+			return nil, fmt.Errorf("proposal %d GraphQL errors: %v", proposalNum, errorMessages)
 		}
 		if resp.Data == nil {
-			return nil, fmt.Errorf("second proposal response has null data field")
+			return nil, fmt.Errorf("proposal %d response has null data field", proposalNum)
 		}
 
-		// Parse second proposal response (this should have accepted tax terms)
+		// Parse proposal response
 		proposalData, err = p.Parser.ParseProposalResponse(resp.Data)
 		if err != nil {
-			return nil, fmt.Errorf("failed to parse second proposal: %w", err)
+			return nil, fmt.Errorf("failed to parse proposal %d: %w", proposalNum, err)
 		}
 
-		p.Logger.Info("Second proposal completed successfully - tax terms accepted")
-	} else {
-		p.Logger.Info("No checkpoint/changeset tokens, skipping second proposal")
+		p.Logger.Infof("Proposal %d completed. CheckpointData: %v, QueueToken: %v, ChangesetTokens: %v",
+			proposalNum, proposalData.CheckpointData != "", proposalData.QueueToken != "", len(proposalData.ChangesetTokens))
+
+		// Sleep 3 seconds after first proposal (matches Python: if i == 0: await asyncio.sleep(3))
+		if i == 0 {
+			time.Sleep(3 * time.Second)
+		}
 	}
+
+	p.Logger.Info("Both proposals completed successfully")
 
 	// Update builder with payment info from final proposal
 	builder.PaymentID = proposalData.PaymentID
