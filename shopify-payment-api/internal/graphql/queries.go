@@ -105,6 +105,10 @@ type VariablesBuilder struct {
 	CheckpointData  string   // Checkpoint data from first proposal
 	ChangesetTokens []string // Changeset tokens from first proposal
 	Address         AddressData
+	// Fields for second proposal
+	DeliveryStrategy string  // Delivery strategy handle from first proposal
+	ShippingAmount   float64 // Shipping amount from first proposal
+	TaxAmount        float64 // Tax amount from first proposal
 }
 
 // AddressData contains address information
@@ -324,6 +328,88 @@ func (b *VariablesBuilder) BuildProposalVariables(includePayment bool) map[strin
 					"phone":       b.Address.Phone,
 				},
 			},
+		}
+	}
+
+	return variables
+}
+
+// BuildDeliveryProposalVariables builds variables for second proposal (delivery selection)
+// This matches Python's second proposal with updated fields for TAX_NEW_TAX_MUST_BE_ACCEPTED
+func (b *VariablesBuilder) BuildDeliveryProposalVariables() map[string]interface{} {
+	// Start with base proposal variables
+	variables := b.BuildProposalVariables(false)
+
+	stableID := b.StableID
+	if stableID == "" {
+		stableID = "1"
+	}
+
+	// Update delivery section for second proposal
+	if deliveryLines, ok := variables["delivery"].(map[string]interface{})["deliveryLines"].([]map[string]interface{}); ok && len(deliveryLines) > 0 {
+		// Change selectedDeliveryStrategy to deliveryStrategyByHandle with actual handle
+		if b.DeliveryStrategy != "" {
+			deliveryLines[0]["selectedDeliveryStrategy"] = map[string]interface{}{
+				"deliveryStrategyByHandle": map[string]interface{}{
+					"handle":             b.DeliveryStrategy,
+					"customDeliveryRate": false,
+				},
+				"options": map[string]interface{}{},
+			}
+		}
+
+		// Set expectedTotalPrice to actual shipping amount
+		if b.ShippingAmount > 0 {
+			deliveryLines[0]["expectedTotalPrice"] = map[string]interface{}{
+				"value": map[string]interface{}{
+					"amount":       formatAmount(b.ShippingAmount),
+					"currencyCode": b.Currency,
+				},
+			}
+		}
+
+		// Change targetMerchandiseLines from {any: true} to specific lines
+		deliveryLines[0]["targetMerchandiseLines"] = map[string]interface{}{
+			"lines": []map[string]interface{}{
+				{
+					"stableId": stableID,
+				},
+			},
+		}
+
+		// Set destinationChanged to false (address already confirmed)
+		deliveryLines[0]["destinationChanged"] = false
+	}
+
+	// Update payment.billingAddress with full address (not empty)
+	if payment, ok := variables["payment"].(map[string]interface{}); ok {
+		if billingAddr, ok := payment["billingAddress"].(map[string]interface{}); ok {
+			if streetAddr, ok := billingAddr["streetAddress"].(map[string]interface{}); ok {
+				streetAddr["address1"] = b.Address.Address1
+				streetAddr["city"] = b.Address.City
+				streetAddr["countryCode"] = b.Address.CountryCode
+				streetAddr["lastName"] = b.Address.LastName
+				streetAddr["zoneCode"] = b.Address.State
+				streetAddr["phone"] = b.Address.Phone
+			}
+		}
+	}
+
+	// Update taxes.proposedTotalAmount with actual tax amount
+	if b.TaxAmount > 0 {
+		if taxes, ok := variables["taxes"].(map[string]interface{}); ok {
+			if proposedTotal, ok := taxes["proposedTotalAmount"].(map[string]interface{}); ok {
+				if value, ok := proposedTotal["value"].(map[string]interface{}); ok {
+					value["amount"] = formatAmount(b.TaxAmount)
+				}
+			}
+		}
+	}
+
+	// Add number field to buyerIdentity.shopPayOptInPhone
+	if buyerIdentity, ok := variables["buyerIdentity"].(map[string]interface{}); ok {
+		if shopPayOptIn, ok := buyerIdentity["shopPayOptInPhone"].(map[string]interface{}); ok {
+			shopPayOptIn["number"] = b.Address.Phone
 		}
 	}
 

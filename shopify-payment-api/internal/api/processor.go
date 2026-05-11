@@ -535,45 +535,60 @@ func (p *PaymentProcessor) executeProposals(ctx context.Context, client *network
 	p.Logger.Infof("First proposal completed. CheckpointData: %v, QueueToken: %v, ChangesetTokens: %v",
 		proposalData.CheckpointData != "", proposalData.QueueToken != "", len(proposalData.ChangesetTokens))
 
-	// Sleep for 3 seconds before second proposal (matches Python implementation)
-	time.Sleep(3 * time.Second)
+	// Check if we need to execute second proposal (if checkpoint or changeset tokens exist)
+	if proposalData.CheckpointData != "" || len(proposalData.ChangesetTokens) > 0 {
+		p.Logger.Info("Checkpoint/changeset tokens found, executing second proposal for tax acceptance...")
 
-	// Execute second proposal (delivery selection) - this accepts tax terms
-	p.Logger.Info("Executing second proposal (delivery selection)...")
+		// Sleep for 3 seconds before second proposal (matches Python implementation)
+		time.Sleep(3 * time.Second)
 
-	// Update builder with checkpoint and queue tokens from first proposal
-	builder.CheckpointData = proposalData.CheckpointData
-	builder.QueueToken = proposalData.QueueToken
-	builder.ChangesetTokens = proposalData.ChangesetTokens
+		// Update builder with data from first proposal for second proposal
+		builder.CheckpointData = proposalData.CheckpointData
+		builder.QueueToken = proposalData.QueueToken
+		builder.ChangesetTokens = proposalData.ChangesetTokens
+		builder.DeliveryStrategy = proposalData.DeliveryStrategy
+		builder.ShippingAmount = proposalData.ShippingAmount
+		builder.TaxAmount = proposalData.TaxAmount
+		builder.StableID = proposalData.StableID
 
-	// Use same variables for second proposal (Python does this in a loop with same data)
-	variables = builder.BuildProposalVariables(false)
-	resp, err = graphqlExecutor.Execute(ctx, graphqlURL, graphql.QUERY_PROPOSAL, variables, headers)
-	if err != nil {
-		return nil, fmt.Errorf("second proposal failed: %w", err)
-	}
+		// Build second proposal variables with updated delivery/tax information
+		variables = builder.BuildDeliveryProposalVariables()
 
-	// Check for GraphQL errors or null data
-	if len(resp.Errors) > 0 {
-		errorMessages := make([]string, len(resp.Errors))
-		for i, e := range resp.Errors {
-			errorMessages[i] = e.Message
+		// Log second proposal variables at debug level
+		if variablesJSON, err := json.Marshal(variables); err == nil {
+			p.Logger.Debugf("Second proposal variables payload: %s", string(variablesJSON))
 		}
-		return nil, fmt.Errorf("second proposal GraphQL errors: %v", errorMessages)
-	}
-	if resp.Data == nil {
-		return nil, fmt.Errorf("second proposal response has null data field")
+
+		// Execute second proposal (delivery selection) - this accepts tax terms
+		resp, err = graphqlExecutor.Execute(ctx, graphqlURL, graphql.QUERY_PROPOSAL, variables, headers)
+		if err != nil {
+			return nil, fmt.Errorf("second proposal failed: %w", err)
+		}
+
+		// Check for GraphQL errors or null data
+		if len(resp.Errors) > 0 {
+			errorMessages := make([]string, len(resp.Errors))
+			for i, e := range resp.Errors {
+				errorMessages[i] = e.Message
+			}
+			return nil, fmt.Errorf("second proposal GraphQL errors: %v", errorMessages)
+		}
+		if resp.Data == nil {
+			return nil, fmt.Errorf("second proposal response has null data field")
+		}
+
+		// Parse second proposal response (this should have accepted tax terms)
+		proposalData, err = p.Parser.ParseProposalResponse(resp.Data)
+		if err != nil {
+			return nil, fmt.Errorf("failed to parse second proposal: %w", err)
+		}
+
+		p.Logger.Info("Second proposal completed successfully - tax terms accepted")
+	} else {
+		p.Logger.Info("No checkpoint/changeset tokens, skipping second proposal")
 	}
 
-	// Parse second proposal response (this should have accepted tax terms)
-	proposalData, err = p.Parser.ParseProposalResponse(resp.Data)
-	if err != nil {
-		return nil, fmt.Errorf("failed to parse second proposal: %w", err)
-	}
-
-	p.Logger.Info("Second proposal completed successfully")
-
-	// Update builder with payment info
+	// Update builder with payment info from final proposal
 	builder.PaymentID = proposalData.PaymentID
 	builder.StableID = proposalData.StableID
 
