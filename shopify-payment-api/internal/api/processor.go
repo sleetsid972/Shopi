@@ -41,7 +41,7 @@ func NewPaymentProcessor(client *network.Client, classifier *classifier.Classifi
 		Logger:     logger,
 		GraphQL:    graphql.NewExecutor(client, logger),
 		Parser:     parser.NewParser(logger),
-		AddrGen:    utils.NewAddressGenerator(),
+		AddrGen:    utils.NewAddressGenerator(logger),
 	}
 }
 
@@ -498,6 +498,14 @@ func (p *PaymentProcessor) executeProposals(ctx context.Context, client *network
 	// Execute shipping proposal (first proposal)
 	p.Logger.Info("Executing first proposal (shipping)...")
 	variables := builder.BuildProposalVariables(false)
+
+	// Log variables payload at debug level
+	if variablesJSON, err := json.Marshal(variables); err == nil {
+		p.Logger.Debugf("First proposal variables payload: %s", string(variablesJSON))
+	}
+
+	// Log delivery phone specifically
+	p.Logger.Infof("Delivery phone in proposal: %s", addr.Phone)
 
 	// Create GraphQL executor with isolated client for this task
 	graphqlExecutor := graphql.NewExecutor(client, p.Logger)

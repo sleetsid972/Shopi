@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"math/rand"
 	"time"
+
+	"github.com/sirupsen/logrus"
 )
 
 // Address represents a physical address
@@ -21,13 +23,15 @@ type Address struct {
 
 // AddressGenerator generates realistic addresses for testing
 type AddressGenerator struct {
-	rand *rand.Rand
+	rand   *rand.Rand
+	logger *logrus.Logger
 }
 
 // NewAddressGenerator creates a new address generator
-func NewAddressGenerator() *AddressGenerator {
+func NewAddressGenerator(logger *logrus.Logger) *AddressGenerator {
 	return &AddressGenerator{
-		rand: rand.New(rand.NewSource(time.Now().UnixNano())),
+		rand:   rand.New(rand.NewSource(time.Now().UnixNano())),
+		logger: logger,
 	}
 }
 
@@ -113,6 +117,8 @@ func (g *AddressGenerator) generateUS() *Address {
 	exchange := 200 + g.rand.Intn(800)
 	subscriber := g.rand.Intn(10000)
 	phone := fmt.Sprintf("%03d%03d%04d", areaCode, exchange, subscriber)
+
+	g.logger.Infof("Generated phone: %s", phone)
 
 	return &Address{
 		FirstName:   firstName,
