@@ -346,7 +346,7 @@ func (p *PaymentProcessor) createCheckout(ctx context.Context, client *network.C
 
 	req.Header.Set("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8")
 
-	resp, err = p.Client.Do(ctx, req)
+	resp, err = client.Do(ctx, req)
 	if err != nil {
 		return nil, err
 	}
