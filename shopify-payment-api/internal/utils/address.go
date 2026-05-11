@@ -112,11 +112,8 @@ func (g *AddressGenerator) generateUS() *Address {
 	firstName := firstNames[g.rand.Intn(len(firstNames))]
 	lastName := lastNames[g.rand.Intn(len(lastNames))]
 
-	// Generate phone (US format - plain 10 digits for Shopify compatibility)
-	areaCode := 200 + g.rand.Intn(800)
-	exchange := 200 + g.rand.Intn(800)
-	subscriber := g.rand.Intn(10000)
-	phone := fmt.Sprintf("%03d%03d%04d", areaCode, exchange, subscriber)
+	// Use hardcoded valid phone number from Python's address book (matches working Python implementation)
+	phone := "2194157586"
 
 	g.logger.Infof("Generated phone: %s", phone)
 
