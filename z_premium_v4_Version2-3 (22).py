@@ -41,6 +41,10 @@ BOT_OWNER_ID = 7221087191
 ADMINS = [BOT_OWNER_ID]
 NUM_WORKERS = 6                   # STABLE: 6 workers to avoid 429/402 errors — 6 × 5s latency ≈ 72 cards/min
 
+# F. Exponential Backoff for Card Retries
+MAX_CARD_RETRIES = 3               # Max retries with exponential backoff: 2s, 4s, 8s
+RETRY_DELAYS = [2, 4, 8]           # Delays between retries in seconds
+
 API_ID = 24653878
 API_HASH = "4f3cf0c0102701397629560c7a12d3a0"
 PHONE_NUMBER = "+919320665632"
@@ -79,7 +83,7 @@ FAST_FAIL_THRESHOLD_SECS = 1.0     # Cards completing faster than this likely di
 SHOPIFY_TEST_CARD = "4111111111111111|12|2026|123"
 
 # ═══════════════ Retry / Resilience Config ═══════════════
-MAX_CARD_RETRIES = 3               # Max retries for retryable cards before marking declined
+# F. Exponential backoff already defined above
 CAPTCHA_BLOCK_MINUTES = 10         # CAPTCHA sites blocked temporarily (not permanently)
 SITE_TEST_RETRIES = 3              # OPTIMISED: 3 retries for 503/timeout during site testing (was 2)
 SITE_TEST_RETRY_DELAY = 2          # OPTIMISED: faster retry (was 5s) — sites that need >3 retries are likely dead
@@ -297,9 +301,17 @@ class CardCheckerBot:
 
         # Site price cache: site_url -> cheapest product price (float)
         self._site_price_cache: Dict[str, float] = {}
+        self._price_cache_lock = asyncio.Lock()  # E. Thread-safety for price cache
 
         # Good sites list (strict: real payment responses only)
         self.good_sites: List[str] = []
+
+        # CAPTCHA strike tracking (site -> strike count)
+        self._captcha_strike_counts: Dict[str, int] = {}
+
+        # API health monitoring
+        self._api_healthy: bool = True
+        self._api_health_failures: int = 0
 
         # ═══════════════ Parallel mass check tracking ═══════════════
         self.user_job_count: Dict[int, int] = {}          # user_id -> total jobs active
@@ -374,6 +386,56 @@ class CardCheckerBot:
     async def close_http_session(self):
         if self.http_session and not self.http_session.closed:
             await self.http_session.close()
+
+    # ═══════════════ API Health Check (C) ═══════════════
+    async def _api_health_check(self) -> bool:
+        """Perform a health check on the Shopify API.
+        Returns True if healthy, False otherwise."""
+        test_card = "4111111111111111|01|26|123"
+        try:
+            session = await self.get_http_session()
+            params = {"site": "https://yallsweettea.com", "cc": test_card}
+            timeout = aiohttp.ClientTimeout(total=10)
+            async with session.get(SHOPIFY_API_URL, params=params, timeout=timeout) as resp:
+                if resp.status == 200:
+                    logger.info(f"✅ API health check PASSED (HTTP {resp.status})")
+                    return True
+                else:
+                    logger.error(f"❌ API health check FAILED: HTTP {resp.status}")
+                    return False
+        except asyncio.TimeoutError:
+            logger.error("❌ API health check FAILED: Timeout after 10s")
+            return False
+        except Exception as e:
+            logger.error(f"❌ API health check FAILED: {str(e)[:100]}")
+            return False
+
+    async def _ensure_api_healthy(self):
+        """Ensure API is healthy before proceeding. Retries until successful."""
+        while not await self._api_health_check():
+            logger.warning("⏳ API unhealthy, waiting 30s before retry...")
+            await asyncio.sleep(30)
+        self._api_healthy = True
+        self._api_health_failures = 0
+        logger.info("✅ API is healthy, proceeding with bot startup")
+
+    async def _background_health_monitor(self):
+        """Background task that pings API every 5 minutes.
+        If 3 consecutive failures, pause workers."""
+        while True:
+            await asyncio.sleep(300)  # 5 minutes
+            healthy = await self._api_health_check()
+            if healthy:
+                if self._api_health_failures > 0:
+                    logger.info(f"✅ API recovered after {self._api_health_failures} failures")
+                self._api_healthy = True
+                self._api_health_failures = 0
+            else:
+                self._api_health_failures += 1
+                logger.warning(f"⚠️ API health check failed ({self._api_health_failures}/3)")
+                if self._api_health_failures >= 3:
+                    self._api_healthy = False
+                    logger.error("🚨 API UNHEALTHY - Pausing all mass workers until recovery")
 
     # ═══════════════ Access Control — FIX ═══════════════
     def is_user_approved(self, user_id: int) -> bool:
@@ -932,6 +994,16 @@ class CardCheckerBot:
                 if self.site_index >= len(self.working_sites):
                     self.site_index = 0
             if captcha:
+                # E. Thread-safety: Track CAPTCHA strikes
+                self._captcha_strike_counts[site] = self._captcha_strike_counts.get(site, 0) + 1
+                strike_count = self._captcha_strike_counts[site]
+
+                # Permanent ban after 5 CAPTCHA strikes
+                if strike_count >= 5:
+                    self.dead_sites.add(site)
+                    logger.error(f"🚫 PERMANENTLY BANNED site (5 CAPTCHA strikes): {site} ({reason})")  # G. Enhanced logging
+                    return
+
                 # Temporary block — site recovers after cooldown
                 self._captcha_blocked_sites[site] = time.time() + (CAPTCHA_BLOCK_MINUTES * 60)
             else:
@@ -1136,37 +1208,38 @@ class CardCheckerBot:
     async def rebuild_sites_by_filter(self, amount_filter: str):
         """Pre-filter the site list by amount filter using ONLY cached prices (instant).
         No live API calls — relies on prefetch_site_prices() having been run first."""
-        self.current_amount_filter = amount_filter
+        async with self._site_lock:  # E. Thread-safety
+            self.current_amount_filter = amount_filter
 
-        # Determine base site list: prefer good_sites, fallback to working_sites/owner_sites
-        base_sites = list(self.good_sites) if self.good_sites else list(self.working_sites)
-        if not base_sites:
-            base_sites = [s for s in self.owner_sites if s not in self.dead_sites]
+            # Determine base site list: prefer good_sites, fallback to working_sites/owner_sites
+            base_sites = list(self.good_sites) if self.good_sites else list(self.working_sites)
+            if not base_sites:
+                base_sites = [s for s in self.owner_sites if s not in self.dead_sites]
 
-        if amount_filter == "all":
-            self.working_sites = base_sites
+            if amount_filter == "all":
+                self.working_sites = base_sites
+                self.site_index = 0
+                logger.info(f"[filter] Restored {len(self.working_sites)} sites (no filter)")
+                return
+
+            # FIX: Filter sites using ONLY cached prices — no live API calls
+            filtered = []
+            skipped_no_cache = 0
+            for site in base_sites:
+                price = self._site_price_cache.get(site, 0.0)
+                if price > 0:
+                    if self._is_price_in_filter(price, amount_filter):
+                        filtered.append(site)
+                else:
+                    # No cached price — exclude from filtered list (warn, don't fetch)
+                    skipped_no_cache += 1
+
+            if skipped_no_cache > 0:
+                logger.warning(f"[filter] {skipped_no_cache} sites have no cached price — run /test_sites to populate cache")
+
+            self.working_sites = filtered if filtered else base_sites
             self.site_index = 0
-            logger.info(f"[filter] Restored {len(self.working_sites)} sites (no filter)")
-            return
-
-        # FIX: Filter sites using ONLY cached prices — no live API calls
-        filtered = []
-        skipped_no_cache = 0
-        for site in base_sites:
-            price = self._site_price_cache.get(site, 0.0)
-            if price > 0:
-                if self._is_price_in_filter(price, amount_filter):
-                    filtered.append(site)
-            else:
-                # No cached price — exclude from filtered list (warn, don't fetch)
-                skipped_no_cache += 1
-
-        if skipped_no_cache > 0:
-            logger.warning(f"[filter] {skipped_no_cache} sites have no cached price — run /test_sites to populate cache")
-
-        self.working_sites = filtered if filtered else base_sites
-        self.site_index = 0
-        logger.info(f"[filter] Filter '{amount_filter}': {len(filtered)} sites matched out of {len(base_sites)}")
+            logger.info(f"[filter] Filter '{amount_filter}': {len(filtered)} sites matched out of {len(base_sites)}")
 
     async def prefetch_site_prices(self):
         """Pre-fetch cheapest product prices for all working sites using the API with a test card.
@@ -1193,14 +1266,16 @@ class CardCheckerBot:
                             data = await resp.json()
                             price = float(data.get("Price", 0.0)) if data.get("Price") else 0.0
                             if price > 0:
-                                self._site_price_cache[site] = price
+                                async with self._price_cache_lock:  # E. Thread-safety
+                                    self._site_price_cache[site] = price
                                 return
                 except Exception:
                     pass
                 # Fallback: try scraping products.json
                 price = await self._fetch_product_price_fallback(site)
                 if price and price > 0:
-                    self._site_price_cache[site] = price
+                    async with self._price_cache_lock:  # E. Thread-safety
+                        self._site_price_cache[site] = price
 
         tasks = [fetch_price(s) for s in uncached]
         await asyncio.gather(*tasks, return_exceptions=True)
@@ -1248,6 +1323,20 @@ class CardCheckerBot:
             async with session.get(SHOPIFY_API_URL, params=params, timeout=timeout) as resp:
                 elapsed = time.time() - start_time
 
+                # D. Non-JSON Response Handling
+                content_type = resp.headers.get('Content-Type', '')
+                if 'application/json' not in content_type:
+                    non_json_text = await resp.text()
+                    logger.warning(f"[API] {site_name} | Non-JSON response | Content-Type: {content_type} | {non_json_text[:100]}")
+                    return ShopifyCheckResult(
+                        card=card_line, status=ShopifyCheckStatus.ERROR,
+                        status_code="API_NON_JSON", site_name=site_name,
+                        shop_url=shop_url, gateway="SHOPIFY-RELOADED",
+                        error_msg=f"API returned non-JSON: {content_type}",
+                        retryable=True,
+                        site_dead=False,  # Do NOT mark site dead
+                    )
+
                 if resp.status != 200:
                     error_text = await resp.text()
                     logger.warning(f"[API] {site_name} | HTTP {resp.status} | {elapsed:.2f}s | {error_text[:100]}")
@@ -1264,6 +1353,18 @@ class CardCheckerBot:
 
                 data = await resp.json()
                 elapsed = time.time() - start_time
+
+                # D. Handle missing keys in JSON without marking site dead
+                if not data or not isinstance(data, dict):
+                    logger.warning(f"[API] {site_name} | Invalid JSON structure | {elapsed:.2f}s")
+                    return ShopifyCheckResult(
+                        card=card_line, status=ShopifyCheckStatus.ERROR,
+                        status_code="INVALID_JSON_STRUCTURE", site_name=site_name,
+                        shop_url=shop_url, gateway="SHOPIFY-RELOADED",
+                        error_msg="API returned invalid JSON structure",
+                        retryable=True,
+                        site_dead=False,  # Do NOT mark site dead
+                    )
 
                 api_status = data.get("Status", False)
                 api_response = data.get("Response", "UNKNOWN")
@@ -1541,6 +1642,8 @@ class CardCheckerBot:
 
                 if resp.status != 200:
                     out["reason"] = f"HTTP {resp.status} after {elapsed:.1f}s"
+                    # G. Enhanced logging
+                    logger.info(f"[site-test] {site_name} | HTTP {resp.status} | {elapsed:.1f}s | MARKED: DEAD")
                     return out
 
                 data = await resp.json()
@@ -1549,12 +1652,12 @@ class CardCheckerBot:
                 api_gateway = data.get("Gateway", "UNKNOWN")
                 response_upper = api_response.upper() if api_response else ""
 
-                logger.info(f"[site-test] {site_name} | {api_response} | gate={api_gateway} | {elapsed:.1f}s")
-
                 # CAPTCHA detection
                 if "CAPTCHA" in response_upper:
                     out["captcha"] = True
                     out["reason"] = f"CAPTCHA ({api_response})"
+                    # G. Enhanced logging
+                    logger.info(f"[site-test] {site_name} | {api_response} | gate={api_gateway} | {elapsed:.1f}s | MARKED: CAPTCHA")
                     return out
 
                 # Dead site markers
@@ -1566,6 +1669,8 @@ class CardCheckerBot:
                 for marker in dead_markers:
                     if marker in response_upper:
                         out["reason"] = f"Dead: {api_response}"
+                        # G. Enhanced logging
+                        logger.info(f"[site-test] {site_name} | {api_response} | gate={api_gateway} | {elapsed:.1f}s | MARKED: DEAD")
                         return out
 
                 # BAD site markers: responses that mean the site is not useful for checking
@@ -1576,6 +1681,8 @@ class CardCheckerBot:
                     if marker in response_upper:
                         out["reason"] = f"Bad: {api_response}"
                         out["bad_site"] = True
+                        # G. Enhanced logging
+                        logger.info(f"[site-test] {site_name} | {api_response} | gate={api_gateway} | {elapsed:.1f}s | MARKED: BAD")
                         return out
 
                 # GOOD markers: real payment gateway responses that confirm site processes payments
@@ -1594,6 +1701,8 @@ class CardCheckerBot:
                     out["good"] = True
                     out["reason"] = f"OK: {api_response} via {api_gateway}"
                     out["price"] = data.get("Price", 0.0)
+                    # G. Enhanced logging
+                    logger.info(f"[site-test] {site_name} | {api_response} | gate={api_gateway} | {elapsed:.1f}s | MARKED: GOOD")
                     return out
 
                 # Working markers: broader set (includes PAYMENTS_*, DECLINED, etc.)
@@ -1604,24 +1713,34 @@ class CardCheckerBot:
                     out["working"] = True
                     out["reason"] = f"OK: {api_response} via {api_gateway}"
                     out["price"] = data.get("Price", 0.0)
+                    # G. Enhanced logging
+                    logger.info(f"[site-test] {site_name} | {api_response} | gate={api_gateway} | {elapsed:.1f}s | MARKED: WORKING")
                     return out
 
                 # Status=True but unknown response: treat as working
                 if api_status:
                     out["working"] = True
                     out["reason"] = f"Status=True: {api_response}"
+                    # G. Enhanced logging
+                    logger.info(f"[site-test] {site_name} | {api_response} | gate={api_gateway} | {elapsed:.1f}s | MARKED: WORKING (Status=True)")
                     return out
 
                 # Otherwise: failed
                 out["reason"] = f"Unknown response: {api_response}"
+                # G. Enhanced logging
+                logger.info(f"[site-test] {site_name} | {api_response} | gate={api_gateway} | {elapsed:.1f}s | MARKED: FAILED")
                 return out
 
         except asyncio.TimeoutError:
             elapsed = time.time() - start_time
             out["reason"] = f"Timeout ({elapsed:.1f}s)"
+            # G. Enhanced logging
+            logger.info(f"[site-test] {site_name} | TIMEOUT | {elapsed:.1f}s | MARKED: FAILED")
             return out
         except aiohttp.ClientError as e:
             out["reason"] = f"Connection error: {str(e)[:60]}"
+            # G. Enhanced logging
+            logger.info(f"[site-test] {site_name} | ERROR: {str(e)[:60]} | MARKED: FAILED")
             return out
         except Exception as e:
             out["reason"] = f"Error: {type(e).__name__}: {str(e)[:60]}"
@@ -4204,6 +4323,13 @@ class CardCheckerBot:
                                     self.update_user_stats(user_id, approved=1, charged=1)
 
                         elif gateway == 'shopify':
+                            # C. Check API health - pause worker if API is unhealthy
+                            if not self._api_healthy:
+                                logger.warning(f"[worker-{wid}] ⏸️ API unhealthy, pausing worker...")
+                                while not self._api_healthy:
+                                    await asyncio.sleep(5)
+                                logger.info(f"[worker-{wid}] ▶️ API recovered, resuming worker")
+
                             # Periodically unblock CAPTCHA-cooled sites
                             if idx % 10 == 1:
                                 await self._unblock_captcha_sites()
@@ -4274,13 +4400,17 @@ class CardCheckerBot:
                                 retry_count = retry_counts.get(card, 0)
                                 is_retryable = raw in ("All sites failed", "No sites", "ERROR")
                                 if is_retryable and retry_count < MAX_CARD_RETRIES:
+                                    # F. Exponential Backoff for Card Retries
+                                    delay = RETRY_DELAYS[retry_count] if retry_count < len(RETRY_DELAYS) else RETRY_DELAYS[-1]
+                                    await asyncio.sleep(delay)
+
                                     retry_counts[card] = retry_count + 1
                                     cards.append(card)
                                     total += 1
                                     self.throttle.record_error()
                                     logger.info(
                                         f"[worker-{wid}] ♻️ Re-queued card {card[:6]}... for retry "
-                                        f"{retry_count + 1}/{MAX_CARD_RETRIES} | reason={reason}"
+                                        f"{retry_count + 1}/{MAX_CARD_RETRIES} after {delay}s delay | reason={reason}"
                                     )
                                 else:
                                     if is_retryable:
@@ -4496,7 +4626,11 @@ class CardCheckerBot:
                 for i in range(NUM_WORKERS):
                     self.worker_tasks.append(asyncio.create_task(self.worker_loop(i)))
                 bot_task = asyncio.create_task(self.start_bot())
-                await asyncio.gather(bot_task, *self.worker_tasks)
+
+                # C. Start background API health monitor
+                health_monitor_task = asyncio.create_task(self._background_health_monitor())
+
+                await asyncio.gather(bot_task, health_monitor_task, *self.worker_tasks, return_exceptions=True)
             except (ConnectionError, errors.RPCError, OSError) as e:
                 logger.error(f"Connection lost: {e}. Reconnecting in 10s...")
                 await asyncio.sleep(10)
@@ -4531,6 +4665,11 @@ class CardCheckerBot:
         self.load_user_stats()
         self.load_redeem_codes()
         self.load_owner_sites()
+
+        # C. API Health Check - Ensure API is healthy before starting
+        logger.info("🔍 Performing API health check...")
+        await self._ensure_api_healthy()
+
         if self.owner_sites:
             # FIX: Prefer tested working sites if available, else trust all uploaded sites
             loaded = self.load_working_sites_from_file()
