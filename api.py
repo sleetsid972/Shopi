@@ -45,13 +45,34 @@ except ImportError:
     from flask import Flask as _SyncFlask, jsonify, request as quart_request  # noqa
 
 # ── CONFIG ────────────────────────────────────────────────────────────────────
-BROWSER_POOL_SIZE        = int(os.environ.get("BROWSER_POOL_SIZE",        "2"))
-BROWSER_CHECKOUT_TIMEOUT = int(os.environ.get("BROWSER_CHECKOUT_TIMEOUT", "90"))
-COOKIE_CACHE_TTL         = int(os.environ.get("COOKIE_CACHE_TTL",         "3600"))
-PRODUCT_MIN_PRICE        = float(os.environ.get("PRODUCT_MIN_PRICE",      "10.0"))
-PRODUCT_MAX_PRICE        = float(os.environ.get("PRODUCT_MAX_PRICE",      "40.0"))
-API_PORT                 = int(os.environ.get("PORT",                      "5000"))
-API_HOST                 = os.environ.get("HOST",                          "0.0.0.0")
+
+def _env_int(key: str, default: int) -> int:
+    val = os.environ.get(key, "")
+    try:
+        return int(val) if val.strip() else default
+    except ValueError:
+        logger.warning("Invalid env var %s=%r (expected int) — using default %d",
+                       key, val, default)
+        return default
+
+
+def _env_float(key: str, default: float) -> float:
+    val = os.environ.get(key, "")
+    try:
+        return float(val) if val.strip() else default
+    except ValueError:
+        logger.warning("Invalid env var %s=%r (expected float) — using default %g",
+                       key, val, default)
+        return default
+
+
+BROWSER_POOL_SIZE        = _env_int("BROWSER_POOL_SIZE",        2)
+BROWSER_CHECKOUT_TIMEOUT = _env_int("BROWSER_CHECKOUT_TIMEOUT", 90)
+COOKIE_CACHE_TTL         = _env_int("COOKIE_CACHE_TTL",         3600)
+PRODUCT_MIN_PRICE        = _env_float("PRODUCT_MIN_PRICE",      10.0)
+PRODUCT_MAX_PRICE        = _env_float("PRODUCT_MAX_PRICE",      40.0)
+API_PORT                 = _env_int("PORT",                      5000)
+API_HOST                 = os.environ.get("HOST",                "0.0.0.0")
 PREWARM_BROWSERS         = os.environ.get("PREWARM_BROWSERS", "1") == "1"
 
 # ── In-memory cookie cache (defined BEFORE the captcha_solver shim) ───────────
@@ -817,11 +838,18 @@ async def _http_check_with_cookies(
                         elif hasattr(session, "cookies"):
                             session.cookies.set(name, str(value))
                             injected += 1
-                    except Exception:
-                        pass
+                    except Exception as _ce:
+                        logger.debug("[HTTP] Failed to inject cookie %s: %s",
+                                     name, _ce)
                 if injected:
                     logger.info("[HTTP] Injected %d cached cookie(s) for %s",
                                 injected, site_url)
+                elif cookies:
+                    logger.warning(
+                        "[HTTP] Cookie injection failed for %s — "
+                        "session structure may have changed (injected=0/%d)",
+                        site_url, len(cookies)
+                    )
                 result = await asyncio.wait_for(
                     _do_one_check_fn(
                         session, site_url, cc, mon, year, cvv, fingerprint,
