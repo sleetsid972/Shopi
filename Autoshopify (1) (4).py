@@ -220,7 +220,9 @@ async def fetch_products(domain, proxy_str=None):
                 except (ValueError, TypeError, AttributeError):
                     continue
         
-        # Use preferred (>=MIN_PRODUCT_PRICE) if available, otherwise fall back to cheapest
+        # Use preferred (>=MIN_PRODUCT_PRICE) if available, otherwise fall back to cheapest.
+        # Falling back to cheapest is safe: it avoids a complete checkout failure on stores
+        # where all products are under the threshold (e.g., $1-$2 donation stores).
         final_product = preferred_product if preferred_product else min_product
         if isinstance(final_product, dict) and final_product.get('variant_id'):
             return final_product
@@ -632,18 +634,22 @@ async def process_card(cc, mes, ano, cvv, site_url, variant_id=None, proxy_str=N
             payment_data = seller_proposal.get('payment', {})
             if payment_data and payment_data.get('__typename') == 'FilledPaymentTerms':
                 payment_methods = payment_data.get('availablePaymentLines', [])
-                # First pass: prefer DirectPaymentMethod (credit/debit card) — these support 3DS
+                # First pass: prefer card-eligible payment methods that support 3DS
+                CARD_PAYMENT_TYPENAMES = {
+                    'DirectPaymentMethod', 'CreditCardPaymentMethod', 'DebitCardPaymentMethod',
+                    'BraintreeDirectPaymentMethod',
+                }
                 for method in payment_methods:
                     payment_method = method.get('paymentMethod', {})
                     method_typename = payment_method.get('__typename', '')
                     pid = payment_method.get('paymentMethodIdentifier')
-                    if pid and ('Direct' in method_typename or 'CreditCard' in method_typename):
+                    if pid and method_typename in CARD_PAYMENT_TYPENAMES:
                         payment_identifier = pid
                         displayName = payment_method.get('extensibilityDisplayName') or payment_method.get('name', 'Unknown')
                         gateway = displayName or 'UNKNOWN'
                         total_price = str(float(running_total) + shipping_amount + tax_amount)
                         break
-                # Second pass: any method with a valid identifier
+                # Second pass: any method with a valid identifier (broader fallback)
                 if not payment_identifier:
                     for method in payment_methods:
                         payment_method = method.get('paymentMethod', {})
