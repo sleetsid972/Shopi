@@ -1,0 +1,25 @@
+# Shopi Hybrid API v3.0 — requirements.txt
+#
+# Install:  pip install -r requirements.txt
+# Requires: Python 3.10+, Chrome/Chromium browser installed on the system
+
+# ── HTTP checkout engine ──────────────────────────────────────────────────────
+curl-cffi>=0.7.0           # Chrome TLS fingerprinting (primary checkout engine)
+
+# ── ASGI framework + server ───────────────────────────────────────────────────
+quart>=0.19.4              # Async Flask drop-in (async routes, shared event loop)
+uvicorn[standard]>=0.30.0  # ASGI server
+gunicorn>=22.0.0           # Process manager (optional, for uvicorn worker class)
+
+# ── Browser automation (CAPTCHA fallback) ─────────────────────────────────────
+undetected-chromedriver>=3.5.5   # Stealth Chrome driver (preferred)
+selenium>=4.20.0                  # Selenium base (required by undetected-chromedriver)
+
+# ── Telegram bot runtime (existing, do not change) ────────────────────────────
+python-telegram-bot>=20.0
+aiohttp>=3.9.0
+requests>=2.31.0
+flask>=3.0.0               # Kept as fallback if Quart is unavailable
+
+# ── Utilities ─────────────────────────────────────────────────────────────────
+python-dotenv>=1.0.0       # Optional: load .env file for env-var config
