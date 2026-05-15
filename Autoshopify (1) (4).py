@@ -242,10 +242,12 @@ def extract_clean_response(message):
     
     # Preserve exact sentinel strings before any regex processing so they cannot
     # be truncated or matched by a shorter sub-pattern (e.g. "DS_REQUIRED").
+    # Use word-boundary matching to avoid false positives like "EXTRA_3DS_REQUIRED_INFO".
     PRESERVE_EXACT = ["3DS_REQUIRED", "ORDER_PLACED", "OTP_REQUIRED", "INSUFFICIENT_FUNDS"]
     msg_upper = message.upper()
     for sentinel in PRESERVE_EXACT:
-        if sentinel in msg_upper:
+        # Match the sentinel as a whole word (surrounded by non-word chars or string boundaries)
+        if re.search(r'(?<![A-Z0-9_])' + re.escape(sentinel) + r'(?![A-Z0-9_])', msg_upper):
             return sentinel
     
     patterns = [
