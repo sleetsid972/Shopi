@@ -7,6 +7,7 @@
 """
 
 import asyncio
+import collections
 import os
 import re
 import json
@@ -83,7 +84,7 @@ MAX_CARD_RETRIES = 3               # Max retries for retryable cards before mark
 CAPTCHA_BLOCK_MINUTES = 10         # CAPTCHA sites blocked temporarily (not permanently)
 SITE_TEST_RETRIES = 2              # Retries for 503/timeout during site testing
 SITE_TEST_RETRY_DELAY = 5          # Seconds between site test retries
-SITE_TEST_CONCURRENCY_LIMIT = 5    # Increased from 2: safe for 8GB VPS, faster batch testing
+SITE_TEST_CONCURRENCY_LIMIT = 10   # Increased: safe for 8GB VPS, faster parallel site testing
 PROXY_LATENCY_REFRESH_HOURS = 1    # Re-measure proxy latency every N hours
 
 # Browser user agents for general HTTP requests
@@ -346,7 +347,20 @@ class CardCheckerBot:
         self._api_healthy: bool = True
         self._consecutive_api_errors: int = 0
         self._api_health_fail_count: int = 0
-        self.shopify_semaphore = asyncio.Semaphore(4)
+        # Increased from 4 → 8: allows more parallel Shopify API calls while still safe
+        self.shopify_semaphore = asyncio.Semaphore(8)
+
+        # Sliding window rate limiter: max 15 Shopify API requests per second.
+        # Uses a deque of timestamps; before each API call we drop old entries and
+        # wait if the window is full. This prevents overwhelming the Flask API.
+        self._shopify_rate_limit = 15  # max requests per second
+        self._shopify_rate_window: "collections.deque" = collections.deque()
+        self._shopify_rate_lock = asyncio.Lock()
+
+        # TTL cache for site test results: { site_url: (timestamp, result_dict) }
+        # If a site was tested within SITE_TEST_TTL_SECS, re-use the cached result.
+        self._site_test_cache: Dict[str, tuple] = {}
+        self._site_test_ttl = 7200  # 2 hours in seconds
 
     # ═══════════════ Rate Limiting ═══════════════
     async def _rate_limit_bot(self):
@@ -364,6 +378,26 @@ class CardCheckerBot:
             if diff < 0.4:
                 await asyncio.sleep(0.4 - diff)
             self._last_user_msg_time = time.time()
+
+    async def _shopify_rate_limit_wait(self):
+        """Sliding window rate limiter: enforces max self._shopify_rate_limit calls/second.
+        Callers must hold the semaphore before calling this to avoid races.
+        We use a shared deque of timestamps; entries older than 1 second are pruned."""
+        async with self._shopify_rate_lock:
+            now = time.time()
+            # Drop timestamps older than 1 second
+            while self._shopify_rate_window and self._shopify_rate_window[0] <= now - 1.0:
+                self._shopify_rate_window.popleft()
+            if len(self._shopify_rate_window) >= self._shopify_rate_limit:
+                # Wait until the oldest entry falls out of the window
+                sleep_for = 1.0 - (now - self._shopify_rate_window[0])
+                if sleep_for > 0:
+                    await asyncio.sleep(sleep_for)
+                # Re-prune after sleeping
+                now = time.time()
+                while self._shopify_rate_window and self._shopify_rate_window[0] <= now - 1.0:
+                    self._shopify_rate_window.popleft()
+            self._shopify_rate_window.append(time.time())
 
     async def safe_send_message(self, chat_id, text, parse_mode='html', buttons=None):
         await self._rate_limit_bot()
@@ -1390,8 +1424,10 @@ class CardCheckerBot:
                 elif api_status and any(kw in response_upper for kw in [
                     "INSUFFICIENT_FUNDS", "OTP_REQUIRED", "3DS_AUTHENTICATION",
                     "3D_SECURE", "AUTHENTICATION_REQUIRED", "ACTION_REQUIRED",
-                    # 3DS_REQUIRED: card is live but requires 3DS challenge — treat as approved
-                    "3DS_REQUIRED",
+                    # 3DS_REQUIRED: card is live but requires 3DS challenge — treat as approved.
+                    # Also match "DS_REQUIRED" which may appear if Flask API response gets
+                    # truncated before reaching the bot (defensive guard).
+                    "3DS_REQUIRED", "DS_REQUIRED",
                     "APPROVED",
                 ]):
                     status = ShopifyCheckStatus.APPROVED
@@ -1504,8 +1540,9 @@ class CardCheckerBot:
 
             shop_url = self.normalize_site_url(site)
             async with self.shopify_semaphore:
+                await self._shopify_rate_limit_wait()
                 result = await self.run_shopify_graphql_checkout(card_line, shop_url, current_proxy)
-            await asyncio.sleep(0.2)
+            # No unconditional sleep here — the semaphore + rate limiter control pace.
 
             info = {
                 "site": result.site_name,
@@ -1797,7 +1834,8 @@ class CardCheckerBot:
         Uses asyncio.gather with semaphore for fast parallel testing.
         503/timeout errors get SITE_TEST_RETRIES retries before marking dead.
         CAPTCHA sites are NOT counted as working.
-        Also classifies GOOD sites (real payment responses only, no GENERIC_ERROR/DELIVERY_*)."""
+        Also classifies GOOD sites (real payment responses only, no GENERIC_ERROR/DELIVERY_*).
+        TTL cache: sites tested within the last 2 hours reuse cached results unless forced."""
         sites_to_test = sites or list(self.owner_sites)
         working = []
         good_sites = []
@@ -1806,9 +1844,31 @@ class CardCheckerBot:
         failure_reasons = {}
         sem = asyncio.Semaphore(SITE_TEST_CONCURRENCY_LIMIT)
         results_lock = asyncio.Lock()
+        now_ts = time.time()
 
         async def test_one_site(site):
             async with sem:
+                # --- TTL cache check ---
+                cached = self._site_test_cache.get(site)
+                if cached:
+                    cache_ts, cache_result = cached
+                    if now_ts - cache_ts < self._site_test_ttl:
+                        # Replay the cached outcome without hitting the API
+                        async with results_lock:
+                            if cache_result.get("working"):
+                                working.append(site)
+                                if cache_result.get("good"):
+                                    good_sites.append(site)
+                            elif cache_result.get("captcha"):
+                                captcha_sites.append(site)
+                                dead.append(site)
+                                failure_reasons[site] = cache_result.get("reason", "captcha (cached)")
+                            else:
+                                dead.append(site)
+                                failure_reasons[site] = cache_result.get("reason", "dead (cached)")
+                        logger.debug(f"💾 {site} → cached result reused (age {int(now_ts-cache_ts)}s)")
+                        return
+
                 shop_url = self.normalize_site_url(site)
                 last_reason = "unknown"
                 # Try up to SITE_TEST_RETRIES + 1 times for 503/timeout errors
@@ -1823,6 +1883,7 @@ class CardCheckerBot:
                                     price = result.get("price", 0.0)
                                     if price and price > 0:
                                         self._site_price_cache[site] = float(price)
+                            self._site_test_cache[site] = (now_ts, result)
                             logger.info(f"✅ {result['site']} → WORKING{' (GOOD)' if result.get('good') else ''} ({result.get('reason', '')})")
                             return
                         elif result.get("captcha"):
@@ -1830,23 +1891,26 @@ class CardCheckerBot:
                                 captcha_sites.append(site)
                                 dead.append(site)
                                 failure_reasons[site] = f"CAPTCHA: {result.get('reason', 'captcha detected')}"
+                            self._site_test_cache[site] = (now_ts, result)
                             logger.info(f"⚠️ {result['site']} → CAPTCHA (unusable)")
                             return
                         elif result.get("bad_site"):
                             async with results_lock:
                                 dead.append(site)
                                 failure_reasons[site] = result.get("reason", "bad site")
+                            self._site_test_cache[site] = (now_ts, result)
                             logger.info(f"⚠️ {result['site']} → BAD SITE ({result.get('reason', '')})")
                             return
                         else:
                             last_reason = result.get("reason", "unknown")
-                            # Check if it's a 503/timeout — retry with delay
+                            # Check if it's a 503/timeout — retry with exponential backoff
                             reason_str = last_reason.lower()
                             if any(kw in reason_str for kw in ["503", "timeout", "connection error"]):
                                 if attempt < SITE_TEST_RETRIES:
-                                    await asyncio.sleep(SITE_TEST_RETRY_DELAY)
+                                    backoff = SITE_TEST_RETRY_DELAY * (2 ** attempt)  # 1s, 2s
+                                    await asyncio.sleep(backoff)
                                     continue
-                            # Not a retryable error — retry once more then give up
+                            # Not a retryable error — retry once then give up
                             if attempt == 0:
                                 await asyncio.sleep(1)
                                 continue
@@ -1854,29 +1918,28 @@ class CardCheckerBot:
                             async with results_lock:
                                 dead.append(site)
                                 failure_reasons[site] = last_reason
+                            self._site_test_cache[site] = (now_ts, {"working": False, "reason": last_reason})
                             logger.info(f"❌ {result['site']} → DEAD after {attempt + 1} attempts ({last_reason})")
                             return
                     except Exception as e:
                         last_reason = f"exception: {str(e)[:60]}"
                         if attempt < SITE_TEST_RETRIES:
-                            await asyncio.sleep(SITE_TEST_RETRY_DELAY)
+                            backoff = SITE_TEST_RETRY_DELAY * (2 ** attempt)
+                            await asyncio.sleep(backoff)
                             continue
                         async with results_lock:
                             dead.append(site)
                             failure_reasons[site] = last_reason
+                        self._site_test_cache[site] = (now_ts, {"working": False, "reason": last_reason})
                         logger.info(f"❌ {site} → DEAD ({last_reason})")
                         return
 
-        # Run all site tests with global lock to prevent overlapping test runs
+        # Run all site tests concurrently with global lock to prevent overlapping runs.
+        # The semaphore (SITE_TEST_CONCURRENCY_LIMIT=10) caps concurrency; no batch
+        # sleep needed — the semaphore already prevents API overload.
         async with self._site_test_lock:
-            # Process in batches of 2 with sleep between batches to avoid API spam
-            batch_size = 2
-            for i in range(0, len(sites_to_test), batch_size):
-                batch = sites_to_test[i:i + batch_size]
-                batch_tasks = [test_one_site(site) for site in batch]
-                await asyncio.gather(*batch_tasks, return_exceptions=True)
-                if i + batch_size < len(sites_to_test):
-                    await asyncio.sleep(1)
+            tasks = [test_one_site(site) for site in sites_to_test]
+            await asyncio.gather(*tasks, return_exceptions=True)
 
         # Save working sites to file
         with open("working_sites_api.txt", "w") as f:
@@ -2177,8 +2240,11 @@ class CardCheckerBot:
         reason = info.get("reason", "APPROVED" if approved else "Unknown error")
         challenge_url = info.get("challenge_url", "")
 
-        # 3DS_REQUIRED: card is live but needs challenge — show dedicated 3DS message
-        if approved and "3DS_REQUIRED" in reason.upper():
+        # 3DS_REQUIRED: card is live but needs challenge — show dedicated 3DS message.
+        # Also handle "DS_REQUIRED" which can appear when the API response is truncated
+        # (the leading "3" is stripped by the extract_clean_response regex in the Flask API).
+        reason_upper = reason.upper()
+        if approved and ("3DS_REQUIRED" in reason_upper or reason_upper == "DS_REQUIRED"):
             return await self._format_shopify_3ds(card_line, bin_block, site_used, gateway, proxy_line, challenge_url)
 
         # INSUFFICIENT_FUNDS: card is live but has insufficient funds
@@ -4120,7 +4186,8 @@ class CardCheckerBot:
                             if self._api_unavailable:
                                 logger.warning(f"[worker] ⏸ API unavailable — pausing 60s for card {card[:6]}...")
                                 await asyncio.sleep(60)
-                            await asyncio.sleep(0.2)
+                            # No fixed sleep here: shopify_semaphore + sliding window rate limiter
+                            # enforce the correct pace without burning time on healthy calls.
                             proxy = await self.get_next_proxy_async(user_id)
                             # FIX: Pass user's selected amount filter instead of hardcoded "all"
                             user_filter = self.user_amount_filter.get(user_id, "all")
@@ -4208,8 +4275,8 @@ class CardCheckerBot:
                     self.update_user_stats(user_id, checked=1)
                     no_progress_deadline = time.time() + JOB_NO_PROGRESS_TIMEOUT
 
-                    # Update progress UI every 5 cards to reduce Telegram API load
-                    if processed % 5 == 0 or processed == total:
+                    # Update progress UI every 10 cards — halves Telegram API calls vs every 5
+                    if processed % 10 == 0 or processed == total:
                         elapsed = datetime.now() - start_time
                         # FIX: Real ETA based on actual elapsed time per card
                         elapsed_secs = elapsed.total_seconds()

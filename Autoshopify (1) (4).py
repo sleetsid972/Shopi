@@ -240,6 +240,14 @@ def extract_clean_response(message):
     
     message = str(message)
     
+    # Preserve exact sentinel strings before any regex processing so they cannot
+    # be truncated or matched by a shorter sub-pattern (e.g. "DS_REQUIRED").
+    PRESERVE_EXACT = ["3DS_REQUIRED", "ORDER_PLACED", "OTP_REQUIRED", "INSUFFICIENT_FUNDS"]
+    msg_upper = message.upper()
+    for sentinel in PRESERVE_EXACT:
+        if sentinel in msg_upper:
+            return sentinel
+    
     patterns = [
         r'(PAYMENTS_[A-Z_]+)',
         r'(CARD_[A-Z_]+)',
